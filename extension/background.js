@@ -1,3 +1,5 @@
+// background.js (중앙 통제실 - 자동 환경 감지 엔진 탑재)
+
 const waitForTabComplete = (tabId) => new Promise(resolve => {
   const listener = (id, info) => {
     if (id === tabId && info.status === "complete") {
@@ -19,12 +21,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(r => r.json())
       .then(data => {
         let results = [];
-        // 단일 다이렉트 링크인 경우
         if (data.deepLink && (!data.complexes || data.complexes.length === 0)) {
           const match = data.deepLink.match(/complexes\/(\d+)/);
           if (match) results.push({ complexNo: match[1], complexName: data.keyword || keyword, address: '' });
         }
-        // 여러 단지가 잡히는 경우
         else if (data.complexes && data.complexes.length > 0) {
           results = data.complexes.slice(0, 20).map(c => ({
             complexNo: String(c.complexNo),
@@ -39,7 +39,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ error: e.message });
       });
 
-    return true; // 비동기 응답(sendResponse) 채널 유지를 위해 true 리턴
+    return true;
   }
 
   // ── [B] 수집 모드 (지정된 단지 번호로 다이렉트 진입 후 전수조사) ──
@@ -48,6 +48,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log(`🎬 [통제실] 단지 번호 [${complexNo}] 전수조사 가동.`);
 
     (async () => {
+      // 🌟 명령을 내린 대시보드 탭의 오리지널 URL을 미리 확보 (로컬/Vercel 판별용)
+      const originTabUrl = sender.tab?.url || "";
+
       const naverParams = "ms=2AIt9I,3z8DSq,17&a=APT:ABYG:JGC&e=RETAIL&ad=true";
       const tab = await chrome.tabs.create({ url: `https://new.land.naver.com/complexes/${complexNo}?${naverParams}`, active: true });
       await waitForTabComplete(tab.id);
@@ -105,7 +108,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
           const complexName = window.capturedArticles[articleNos[0]]?.complexName || "단지명";
 
-          // 가로챈 오리지널 순서 배열(window.capturedOrder)을 함께 패킹하여 리턴
           return {
             complexName,
             representativeArticles: window.capturedArticles,
@@ -118,23 +120,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       const finalResult = collectionResult[0]?.result;
 
-      // 최종 완제품 데이터 Flask 이송
+      // 최종 완제품 데이터 서버 이송 파트
       if (finalResult && Object.keys(finalResult.representativeArticles || {}).length > 0) {
         try {
-          await fetch("http://127.0.0.1:5000/api/upload", {
+          // 🌟 [스마트 트래픽 라우팅]
+          // 명령을 내렸던 원본 탭의 URL에 localhost나 127.0.0.1이 포함되어 있다면 로컬로 쏘고,
+          // 그 외의 경우(Vercel 도메인 등)에는 자동으로 프로덕션 Vercel 엔드포인트로 쏩니다.
+          const targetUrl = (originTabUrl.includes("localhost") || originTabUrl.includes("127.0.0.1"))
+            ? "http://127.0.0.1:5000/api/upload"
+            : "https://estate-helper.vercel.app/api/upload";
+
+          console.log(`🚀 [통제실] 최종 목적지 감지 완료 -> 배달 주소: ${targetUrl}`);
+
+          await fetch(targetUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               complexNo: complexNo,
               complexName: finalResult.complexName,
               representativeArticles: finalResult.representativeArticles,
-              articleOrder: finalResult.articleOrder, // 랭킹 오리지널 순서 리스트 탑재
+              articleOrder: finalResult.articleOrder,
               allGroups: finalResult.allGroups
             })
           });
-        } catch(e) { console.error("❌ Flask 서버 전송 에러:", e); }
+          console.log("✅ [통제실] 서버 전송 성공.");
+        } catch(e) {
+          console.error("❌ [통제실] 서버 전송 중 에러 발생:", e);
+        }
       }
-      chrome.tabs.remove(tab.id); // 작업 완료 후 제어용 탭 자동 현장 사살
+      chrome.tabs.remove(tab.id); // 작업 완료 후 제어용 네이버 탭 자동 소멸
     })();
   }
 });

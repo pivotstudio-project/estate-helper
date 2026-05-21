@@ -3,7 +3,12 @@
   "name": "부동산 오리지널 이식 수집기",
   "version": "9.5",
   "permissions": ["tabs", "scripting"],
-  "host_permissions": ["https://new.land.naver.com/*", "http://localhost:5000/*", "http://127.0.0.1:5000/*"],
+  "host_permissions": [
+    "https://new.land.naver.com/*",
+    "http://localhost:5000/*",
+    "http://127.0.0.1:5000/*",
+    "https://estate-helper.vercel.app/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://new.land.naver.com/*"],
@@ -12,7 +17,11 @@
       "world": "MAIN"
     },
     {
-      "matches": ["http://localhost:5000/*", "http://127.0.0.1:5000/*"],
+      "matches": [
+        "http://localhost:5000/*",
+        "http://127.0.0.1:5000/*",
+        "https://estate-helper.vercel.app/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_end"
     }
