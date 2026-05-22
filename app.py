@@ -5,7 +5,6 @@ import traceback
 app = Flask(__name__)
 TARGET_REALTOR = "국민공인중개사사무소"
 
-# 익스텐션이 수집 완료하기 전까지 대시보드가 참조할 전역 데이터 공간
 _SHARED_DATA = {
     "status": "READY",
     "complex_name": "조회된 단지 없음",
@@ -13,7 +12,6 @@ _SHARED_DATA = {
     "article_results": []
 }
 
-# 네이버 영문 키값 ➔ 한글 번역 매핑 딕셔너리
 FIELD_MAP = {
     "articleNo": "_매물번호", "articleName": "원문", "articleStatus": "_매물상태", "realEstateTypeName": "_부동산유형",
     "articleRealEstateTypeName": "_매물유형", "tradeTypeCode": "_거래유형코드", "tradeTypeName": "거래유형",
@@ -99,7 +97,6 @@ def flatten_article(article, idx=0):
     out["특징"] = ", ".join(features) if features else ""
     out["태그원문"] = tag_raw
 
-    # [🔥 실무 필터용 백엔드 원시 데이터 탑재]
     out["가격변동여부"] = bool(raw.get("_가격변동") or raw.get("_가격변경") or raw.get("_가격변경2") or raw.get("isPriceModification"))
     out["입주유형"] = str(raw.get("_입주유형") or raw.get("moveInTypeName") or "")
 
@@ -143,12 +140,12 @@ HTML = """<!DOCTYPE html>
   
   .rank-warn { color: #e03131; font-weight: 700; }
   .rank-ok   { color: #2f9e44; font-weight: 700; }
-  .badge { margin-left: 8px; font-size: 11px; background: #e03131; color: #fff; padding: 2px 7px; border-radius: 10px; }
   
+  /* 테이블 셀 패딩 늘려서 숨통 트이기 */
   .rank-wrap, .listing-wrap { max-height: 65vh; overflow: auto; border-radius: 10px; border: 1px solid #e9ecef; background: #fff; margin-bottom: 40px; }
   .rank-wrap table, .listing-wrap table { width: 100%; border-collapse: separate; border-spacing: 0; white-space: nowrap; }
   .rank-wrap thead th, .listing-wrap thead th { position: sticky; top: 0; z-index: 10; background: #f1f3f5; padding: 12px 16px; text-align: left; font-size: 13px; color: #495057; font-weight: 600; border-bottom: 1px solid #dee2e6; }
-  .rank-wrap td, .listing-wrap td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #f1f3f5; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  .rank-wrap td, .listing-wrap td { padding: 16px; font-size: 14px; border-bottom: 1px solid #f1f3f5; vertical-align: middle; }
   .listing-wrap th { cursor: pointer; user-select: none; }
   .listing-wrap th:hover { background: #e9ecef; }
   .listing-wrap th.sorted { color: #339af0; }
@@ -161,7 +158,6 @@ HTML = """<!DOCTYPE html>
   .listing-summary .ls-value { font-size: 28px; font-weight: 700; color: #212529; }
   .listing-summary .ls-value.total { color: #1971c2; }
   
-  /* 🔥 실무 핵심 필터 영역 스타일 */
   .filter-pro { background: #e7f5ff; border: 1px solid #a5d8ff; border-radius: 12px; padding: 16px 24px; margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .filter-pro-title { font-size: 14px; font-weight: 800; color: #1864ab; margin-right: 12px; }
   .pro-btn { background: #fff; border: 1px solid #74c0fc; color: #1971c2; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; }
@@ -188,13 +184,12 @@ HTML = """<!DOCTYPE html>
   .listing-count { font-size: 14px; color: #495057; font-weight: 600; }
   .header-actions { display: flex; gap: 8px; }
   
-  /* 📐 면적 변환 토글 스타일 */
   .area-toggle-btn { background: #343a40; border: none; border-radius: 6px; font-size: 12px; color: #fff; padding: 5px 12px; cursor: pointer; font-weight: 600; transition: background .2s; }
   .area-toggle-btn:hover { background: #212529; }
   .btn-reset { background: none; border: 1px solid #dee2e6; border-radius: 6px; font-size: 12px; color: #868e96; padding: 5px 12px; cursor: pointer; }
   .btn-reset:hover { background: #f1f3f5; border-color: #adb5bd; }
   
-  .realtor-btn { background:#e7f5ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:6px; padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap; }
+  .realtor-btn { background:#e7f5ff;color:#1971c2;border:1px solid #a5d8ff;border-radius:6px; padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap; }
   .realtor-btn:hover { background:#d0ebff; }
 </style>
 </head>
@@ -231,7 +226,7 @@ HTML = """<!DOCTYPE html>
 
     <div class="rank-wrap">
       <table>
-        <thead><tr><th>동</th><th>층</th><th>전용면적</th><th>가격</th><th>경쟁사</th><th>내 순위</th></tr></thead>
+        <thead><tr><th>동</th><th>층</th><th>전용면적</th><th>가격</th><th>경쟁사</th><th>내 순위/인증 현황</th></tr></thead>
         <tbody id="r-tbody"><tr><td colspan="6" style="text-align:center;color:#868e96;padding:24px">단지를 검색하면 실시간 익스텐션 바인딩이 시작됩니다.</td></tr></tbody>
       </table>
     </div>
@@ -297,10 +292,8 @@ let _lSortCol = null;
 let _lSortAsc = true;
 let pollInterval = null;
 
-// 단위 변환 상태값 (기본값: 제곱미터)
 let _isPyung = false;
 
-// 실무 핵심 필터 상태 객체
 let _activeProFilters = {
   priceDrop: false,
   immediate: false,
@@ -419,7 +412,6 @@ function renderRankTab() {
 
   document.getElementById('r-count').textContent = '총 ' + _rankResults.length + '건';
 
-  // 🔥 끌올 필요(빨간색, rank > 3)가 있는 항목이 무조건 최상단으로 오도록 우선 정렬
   const sortedRankResults = [..._rankResults].sort((a, b) => {
     const aHasWarn = a.ranks.some(rk => rk.rank > 3);
     const bHasWarn = b.ranks.some(rk => rk.rank > 3);
@@ -431,13 +423,26 @@ function renderRankTab() {
   let rows = [];
   sortedRankResults.forEach((r, rIdx) => {
     const hasWarn = r.ranks.some(rk => rk.rank > 3);
-    const rankHtml = r.ranks.map(rk => {
-      const w = rk.rank > 3;
-      return '<span class="' + (w ? 'rank-warn' : 'rank-ok') + '">' + rk.rank + '위'
-           + ' <span style="font-size:11px;font-weight:normal;color:#868e96">(' + rk.cp + ')</span></span>';
-    }).join(' · ');
     
-    // 🔥 전용면적 처리 및 단위 변환
+    // 🔥 [디자인 개선] 순위 셀 가독성 대폭 향상 (Flexbox, 여백 활용)
+    const rankHtml = r.ranks.map((rk, idx) => {
+      const w = rk.rank > 3;
+      let badges = '';
+      if (rk.is_owner) badges += '<span style="background:#ffe3e3;color:#e03131;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">집주인</span>';
+      if (rk.is_site) badges += '<span style="background:#d3f9d8;color:#2b8a3e;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">현장</span>';
+
+      const borderStyle = (idx < r.ranks.length - 1) ? 'border-bottom: 1px dashed #e9ecef; margin-bottom: 8px; padding-bottom: 8px;' : '';
+      
+      return '<div style="display:flex; flex-direction:column; gap:4px; ' + borderStyle + '">'
+           + '<div style="display:flex; align-items:center; gap:6px;">'
+           + '<span class="' + (w ? 'rank-warn' : 'rank-ok') + '" style="font-size:14px;">' + rk.rank + '위</span>'
+           + '<span style="font-size:11px;color:#868e96;">(' + rk.cp + ')</span>'
+           + badges
+           + '</div>'
+           + (rk.date ? '<div style="font-size:12px;color:#adb5bd;font-weight:500;">확인매물: ' + rk.date + '</div>' : '')
+           + '</div>';
+    }).join('');
+    
     let displayArea = String(r.exclusiveArea || r.area || '');
     if (displayArea) {
       const num = parseFloat(displayArea.replace(/[^0-9.]/g, ''));
@@ -453,10 +458,10 @@ function renderRankTab() {
     rows.push('<tr' + (hasWarn ? ' class="warn-row"' : '') + '>'
       + '<td>' + (r.building || '-') + '</td>'
       + '<td>' + (r.floor || '-') + '</td>'
-      + '<td>' + displayArea + (r.ranks.length > 1 ? ' <span style="color:#868e96;font-size:12px">(' + r.ranks.length + '건)</span>' : '') + '</td>'
-      + '<td>' + r.price + '</td>'
-      + '<td><button class="realtor-btn" data-ridx="' + rIdx + '">' + r.total + '곳</button></td>'
-      + '<td>' + rankHtml + ' / ' + r.total + '곳' + (hasWarn ? '<span class="badge">끌올</span>' : '') + '</td></tr>');
+      + '<td>' + displayArea + (r.ranks.length > 1 ? ' <div style="color:#868e96;font-size:12px;margin-top:4px;">(동일 ' + r.ranks.length + '건)</div>' : '') + '</td>'
+      + '<td style="font-weight:600;">' + r.price + '</td>'
+      + '<td><button class="realtor-btn" data-ridx="' + rIdx + '">경쟁 ' + r.total + '곳</button></td>'
+      + '<td>' + rankHtml + '</td></tr>');
   });
 
   const rTbody = document.getElementById('r-tbody');
@@ -516,21 +521,19 @@ function initFiltersAndRenderListing() {
   lRender();
 }
 
-// 🔥 실무 핵심 필터 토글 함수
 function toggleProFilter(key, btn) {
   _activeProFilters[key] = !_activeProFilters[key];
   btn.classList.toggle('active', _activeProFilters[key]);
   lRender();
 }
 
-// 📐 면적 단위 변환 함수 (순위 탭 / 매물 탭 공통)
 function toggleAreaUnit() {
   _isPyung = !_isPyung;
   document.querySelectorAll('.area-toggle-btn').forEach(btn => {
     btn.textContent = _isPyung ? '단위: 평' : '단위: ㎡';
   });
-  renderRankTab(); // 순위 탭 리렌더링
-  lRender();       // 매물 탭 리렌더링
+  renderRankTab(); 
+  lRender();       
 }
 
 function lRender() {
@@ -547,7 +550,6 @@ function lRender() {
 
   let rows = _lRows;
   
-  // 1차: 일반 드롭다운 필터 적용
   if (trade)      rows = rows.filter(r => (r['거래유형'] || '') === trade);
   if (building)   rows = rows.filter(r => (r['동'] || '') === building);
   if (direction)  rows = rows.filter(r => (r['방향'] || '') === direction);
@@ -559,7 +561,6 @@ function lRender() {
   if (feature)    rows = rows.filter(r => (r['특징'] || '').split(',').map(s=>s.trim()).includes(feature));
   if (realtor)    rows = rows.filter(r => (r['_중개사명목록'] || '').split('|').map(s=>s.trim()).includes(realtor));
 
-  // 2차: 🔥 실무 핵심 필터(다중교집합) 적용
   if (_activeProFilters.priceDrop) {
     rows = rows.filter(r => r['가격변동여부'] === true || (r['특징']||'').includes('급매'));
   }
@@ -584,7 +585,6 @@ function lRender() {
     });
   }
 
-  // 3차: 정렬 로직
   if (_lSortCol) {
     rows = [...rows].sort((a, b) => {
       let va = a[_lSortCol] ?? '';
@@ -710,24 +710,36 @@ function showRealtorPopup(btn, realtors) {
 
   const modal = document.createElement('div');
   modal.id = 'realtor-popup';
-  modal.style.cssText = 'position:fixed;z-index:9999;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.2);padding:24px 28px;width:360px;max-width:90vw;max-height:70vh;overflow-y:auto;';
+  modal.style.cssText = 'position:fixed;z-index:9999;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.2);padding:24px 28px;width:400px;max-width:90vw;max-height:70vh;overflow-y:auto;';
 
   let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">'
-           + '<span style="font-size:15px;font-weight:700;color:#212529;">공인중개사무소 목록</span>'
+           + '<span style="font-size:16px;font-weight:700;color:#212529;">공인중개사무소 목록</span>'
            + '<button id="popup-close-btn" style="background:none;border:none;cursor:pointer;font-size:20px;color:#adb5bd;line-height:1;padding:0;">&#x2715;</button>'
            + '</div>'
-           + '<div style="font-size:12px;color:#868e96;margin-bottom:12px;">총 ' + realtors.length + '곳</div>';
+           + '<div style="font-size:12px;color:#868e96;margin-bottom:12px;">동일 매물 등록 중개사: 총 ' + realtors.length + '곳</div>';
 
   realtors.forEach((r, i) => {
     const isMine = r.name.includes(MY_REALTOR);
-    const rowBg  = isMine ? 'background:#e7f5ff;border-radius:8px;padding:8px 10px;' : 'padding:8px 10px;';
+    const rowBg  = isMine ? 'background:#e7f5ff;border-radius:8px;' : '';
     const nameStyle = isMine ? 'font-weight:700;color:#1971c2;' : 'color:#212529;';
     const badge = isMine ? '<span style="margin-left:6px;font-size:10px;background:#1971c2;color:#fff;padding:2px 7px;border-radius:8px;vertical-align:middle;">우리</span>' : '';
-    const cp = r.cp ? '<div style="font-size:11px;color:#adb5bd;margin-top:2px;">' + r.cp + '</div>' : '';
-    html += '<div style="border-top:' + (i === 0 ? 'none' : '1px solid #f1f3f5') + ';' + rowBg + '">'
-          + '<div style="display:flex;align-items:center;">'
-          + '<span style="font-size:12px;color:#adb5bd;margin-right:10px;min-width:20px;text-align:right;">' + (i + 1) + '</span>'
-          + '<div><span style="font-size:13px;' + nameStyle + '">' + r.name + badge + '</span>' + cp + '</div>'
+    const cp = r.cp ? '<span style="font-size:11px;color:#adb5bd;margin-left:6px;">(' + r.cp + ')</span>' : '';
+    
+    // 🔥 [디자인 개선] 팝업 내 배지와 날짜를 넉넉하게 배치
+    let extraBadges = '';
+    if (r.is_owner) extraBadges += '<span style="margin-left:6px;font-size:10px;background:#ffe3e3;color:#e03131;padding:2px 6px;border-radius:4px;vertical-align:middle;font-weight:700;">집주인</span>';
+    if (r.is_site) extraBadges += '<span style="margin-left:6px;font-size:10px;background:#d3f9d8;color:#2b8a3e;padding:2px 6px;border-radius:4px;vertical-align:middle;font-weight:700;">현장</span>';
+    const dateStr = r.date ? '<div style="font-size:12px;color:#868e96;margin-top:6px;">확인매물: ' + r.date + '</div>' : '';
+
+    html += '<div style="padding: 12px; border-bottom: ' + (i === realtors.length - 1 ? 'none' : '1px solid #f1f3f5') + ';' + rowBg + '">'
+          + '<div style="display:flex;align-items:flex-start;">'
+          + '<div style="font-size:13px;color:#adb5bd;width:24px;font-weight:600;margin-top:2px;">' + (i + 1) + '</div>'
+          + '<div style="flex:1;">'
+          + '  <div style="display:flex; align-items:center; flex-wrap:wrap;">'
+          + '    <span style="font-size:14px;' + nameStyle + '">' + r.name + '</span>' + badge + extraBadges + cp
+          + '  </div>'
+          + dateStr
+          + '</div>'
           + '</div></div>';
   });
 
@@ -771,10 +783,6 @@ def api_upload():
         all_groups = payload.get('allGroups', {})
         complex_name = payload.get('complexName', '단지명')
 
-        print("\n" + "="*60)
-        print(f"📥 [Flask] 익스텐션에서 가공 완료된 {len(rep_articles)}개 데이터 패키지 최종 접수!")
-        print("="*60)
-
         rank_results = []
         article_results = []
         idx = 0
@@ -783,35 +791,43 @@ def api_upload():
 
         for article_no in keys_to_process:
             rep = rep_articles.get(str(article_no))
-            if not rep:
-                continue
-
+            if not rep: continue
             group = all_groups.get(str(article_no), [])
-            if not group:
-                continue
+            if not group: continue
 
             my_ranks = []
             for item_idx, item in enumerate(group):
+                verif = str(item.get('verificationTypeCode', ''))
+                is_owner = (verif == 'OWNER') or bool(item.get('tradeCheckedByOwner'))
+                is_site = (verif == 'SITE') or bool(item.get('siteImageCount'))
+                c_date = fmt_date(item.get('articleConfirmYmd', ''))
+
                 if TARGET_REALTOR in item.get('realtorName', ''):
                     my_ranks.append({
                         'rank': item_idx + 1,
-                        'cp': item.get('cpName', '기타').replace('부동산','')
+                        'cp': item.get('cpName', '기타').replace('부동산',''),
+                        'is_owner': is_owner,
+                        'is_site': is_site,
+                        'date': c_date
                     })
 
-            realtors_all = [
-                {'name': item.get('realtorName',''), 'cp': item.get('cpName','')}
-                for item in group if item.get('realtorName','')
-            ]
+            realtors_all = []
+            for item in group:
+                if item.get('realtorName', ''):
+                    verif = str(item.get('verificationTypeCode', ''))
+                    realtors_all.append({
+                        'name': item.get('realtorName', ''),
+                        'cp': item.get('cpName', ''),
+                        'is_owner': (verif == 'OWNER') or bool(item.get('tradeCheckedByOwner')),
+                        'is_site': (verif == 'SITE') or bool(item.get('siteImageCount')),
+                        'date': fmt_date(item.get('articleConfirmYmd', ''))
+                    })
 
             min_p = rep.get('sameAddrMinPrc', '')
             max_p = rep.get('sameAddrMaxPrc', '')
-            if min_p and max_p and min_p != max_p:
-                price_display = f"{min_p} ~ {max_p}"
-            else:
-                price_display = rep.get('dealOrWarrantPrc', '')
+            price_display = f"{min_p} ~ {max_p}" if min_p and max_p and min_p != max_p else rep.get('dealOrWarrantPrc', '')
 
             if my_ranks:
-                # 🔥 rank_results 추출 시 전용면적('exclusiveArea') 필드 추가 탑재
                 rank_results.append({
                     'building': rep.get('buildingName', ''),
                     'floor': rep.get('floorInfo', ''),
@@ -835,11 +851,9 @@ def api_upload():
             "rank_results": rank_results,
             "article_results": article_results
         }
-        print("✅ [Flask] 대시보드 리스트 동기화 및 랭킹정렬 바인딩 완료!\n")
         return jsonify({'ok': True})
 
     except Exception as e:
-        print("❌ [Flask] 접수 가공 중 예외 에러:")
         traceback.print_exc()
         return jsonify({'ok': False, 'error': str(e)}), 500
 
