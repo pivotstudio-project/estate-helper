@@ -221,9 +221,17 @@ HTML = """<!DOCTYPE html>
 
   <div class="page active" id="page-rank">
     <div class="summary" id="r-summary"></div>
+    
+    <div class="result-header">
+      <span class="listing-count" id="r-count"></span>
+      <div class="header-actions">
+        <button class="area-toggle-btn" onclick="toggleAreaUnit()">단위: ㎡</button>
+      </div>
+    </div>
+
     <div class="rank-wrap">
       <table>
-        <thead><tr><th>동</th><th>층</th><th>면적구분</th><th>가격</th><th>경쟁사</th><th>내 순위</th></tr></thead>
+        <thead><tr><th>동</th><th>층</th><th>전용면적</th><th>가격</th><th>경쟁사</th><th>내 순위</th></tr></thead>
         <tbody id="r-tbody"><tr><td colspan="6" style="text-align:center;color:#868e96;padding:24px">단지를 검색하면 실시간 익스텐션 바인딩이 시작됩니다.</td></tr></tbody>
       </table>
     </div>
@@ -265,7 +273,7 @@ HTML = """<!DOCTYPE html>
     <div class="result-header">
       <span class="listing-count" id="l-count">0건</span>
       <div class="header-actions">
-        <button class="area-toggle-btn" id="area-toggle-btn" onclick="toggleAreaUnit()">단위: ㎡</button>
+        <button class="area-toggle-btn" onclick="toggleAreaUnit()">단위: ㎡</button>
         <button class="btn-reset" onclick="lResetFilters()">필터 초기화</button>
       </div>
     </div>
@@ -289,7 +297,7 @@ let _lSortCol = null;
 let _lSortAsc = true;
 let pollInterval = null;
 
-// 단위 변환 상태값
+// 단위 변환 상태값 (기본값: 제곱미터)
 let _isPyung = false;
 
 // 실무 핵심 필터 상태 객체
@@ -409,7 +417,9 @@ function renderRankTab() {
     card('끌올 필요', warnCnt + '건', warnCnt > 0 ? 'warn' : 'ok') +
     card('3위 이내', okCnt + '건', 'ok');
 
-  // 🔥 [변경포인트 1] 끌올 필요(빨간색, rank > 3)가 있는 항목이 무조건 최상단으로 오도록 우선 정렬
+  document.getElementById('r-count').textContent = '총 ' + _rankResults.length + '건';
+
+  // 🔥 끌올 필요(빨간색, rank > 3)가 있는 항목이 무조건 최상단으로 오도록 우선 정렬
   const sortedRankResults = [..._rankResults].sort((a, b) => {
     const aHasWarn = a.ranks.some(rk => rk.rank > 3);
     const bHasWarn = b.ranks.some(rk => rk.rank > 3);
@@ -426,12 +436,24 @@ function renderRankTab() {
       return '<span class="' + (w ? 'rank-warn' : 'rank-ok') + '">' + rk.rank + '위'
            + ' <span style="font-size:11px;font-weight:normal;color:#868e96">(' + rk.cp + ')</span></span>';
     }).join(' · ');
+    
+    // 🔥 전용면적 처리 및 단위 변환
+    let displayArea = String(r.exclusiveArea || r.area || '');
+    if (displayArea) {
+      const num = parseFloat(displayArea.replace(/[^0-9.]/g, ''));
+      if (!isNaN(num)) {
+        if (_isPyung) {
+          displayArea = Math.round(num * 0.3025) + '평';
+        } else {
+          displayArea = num + '㎡';
+        }
+      }
+    }
 
-    // 🔥 [변경포인트 2] 동, 층, 면적구분을 각각 독립된 TD 컬럼으로 나누어 가독성 증대
     rows.push('<tr' + (hasWarn ? ' class="warn-row"' : '') + '>'
       + '<td>' + (r.building || '-') + '</td>'
       + '<td>' + (r.floor || '-') + '</td>'
-      + '<td>' + r.area + (r.ranks.length > 1 ? ' <span style="color:#868e96;font-size:12px">(' + r.ranks.length + '건)</span>' : '') + '</td>'
+      + '<td>' + displayArea + (r.ranks.length > 1 ? ' <span style="color:#868e96;font-size:12px">(' + r.ranks.length + '건)</span>' : '') + '</td>'
       + '<td>' + r.price + '</td>'
       + '<td><button class="realtor-btn" data-ridx="' + rIdx + '">' + r.total + '곳</button></td>'
       + '<td>' + rankHtml + ' / ' + r.total + '곳' + (hasWarn ? '<span class="badge">끌올</span>' : '') + '</td></tr>');
@@ -443,7 +465,6 @@ function renderRankTab() {
   rTbody.querySelectorAll('.realtor-btn[data-ridx]').forEach(btn => {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      // 정렬된 배열(sortedRankResults)의 인덱스를 안전하게 매핑하여 바인딩
       const r = sortedRankResults[parseInt(this.dataset.ridx)];
       showRealtorPopup(this, r.realtors || []);
     });
@@ -502,11 +523,14 @@ function toggleProFilter(key, btn) {
   lRender();
 }
 
-// 📐 면적 단위 변환 함수
+// 📐 면적 단위 변환 함수 (순위 탭 / 매물 탭 공통)
 function toggleAreaUnit() {
   _isPyung = !_isPyung;
-  document.getElementById('area-toggle-btn').textContent = _isPyung ? '단위: 평' : '단위: ㎡';
-  lRender();
+  document.querySelectorAll('.area-toggle-btn').forEach(btn => {
+    btn.textContent = _isPyung ? '단위: 평' : '단위: ㎡';
+  });
+  renderRankTab(); // 순위 탭 리렌더링
+  lRender();       // 매물 탭 리렌더링
 }
 
 function lRender() {
@@ -556,7 +580,7 @@ function lRender() {
       if (parts.length !== 3) return false;
       const d = new Date(2000 + parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
       const diffDays = (now - d) / (1000 * 60 * 60 * 24);
-      return diffDays >= 0 && diffDays <= 4; // 최근 3일(+시간오차 여유)내
+      return diffDays >= 0 && diffDays <= 4; 
     });
   }
 
@@ -629,11 +653,10 @@ function lRender() {
       
       let displayVal = String(row[c] ?? '');
       
-      // 📐 렌더링 시점에 면적 단위(평형) 실시간 변환 로직 적용
       if ((c === '공급면적' || c === '전용면적') && _isPyung && displayVal.includes('㎡')) {
         const num = parseFloat(displayVal.replace('㎡', ''));
         if (!isNaN(num)) {
-          displayVal = (num * 0.3025).toFixed(1) + '평';
+          displayVal = Math.round(num * 0.3025) + '평';
         }
       }
       
@@ -665,12 +688,10 @@ function toggleSubFilter() {
 }
 
 function lResetFilters() {
-  // 일반 드롭다운 필터 초기화
   ['l-tradeFilter','l-buildingFilter','l-directionFilter','l-gubnFilter','l-realtorFilter','l-floorFilter','l-roomFilter','l-bathFilter','l-ageFilter','l-featureFilter'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   
-  // 실무 프로 필터 초기화
   for (let key in _activeProFilters) {
     _activeProFilters[key] = false;
   }
@@ -723,7 +744,8 @@ function closeRealtorPopup() {
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeRealtorPopup(); });
 </script>
 </body>
-</html>"""
+</html>
+"""
 
 @app.route('/')
 def index():
@@ -789,11 +811,12 @@ def api_upload():
                 price_display = rep.get('dealOrWarrantPrc', '')
 
             if my_ranks:
-                # 🔥 [변경포인트 3] rank_results 추출 시 원본 층수 정보('floorInfo') 필드 추가 탑재
+                # 🔥 rank_results 추출 시 전용면적('exclusiveArea') 필드 추가 탑재
                 rank_results.append({
                     'building': rep.get('buildingName', ''),
                     'floor': rep.get('floorInfo', ''),
                     'area': rep.get('areaName', ''),
+                    'exclusiveArea': rep.get('exclusiveArea', ''),
                     'price': price_display, 'total': len(group),
                     'ranks': my_ranks, 'realtors': realtors_all
                 })
