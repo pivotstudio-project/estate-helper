@@ -223,8 +223,8 @@ HTML = """<!DOCTYPE html>
     <div class="summary" id="r-summary"></div>
     <div class="rank-wrap">
       <table>
-        <thead><tr><th>매물</th><th>가격</th><th>경쟁사</th><th>내 순위</th></tr></thead>
-        <tbody id="r-tbody"><tr><td colspan="4" style="text-align:center;color:#868e96;padding:24px">단지를 검색하면 실시간 익스텐션 바인딩이 시작됩니다.</td></tr></tbody>
+        <thead><tr><th>동</th><th>층</th><th>면적구분</th><th>가격</th><th>경쟁사</th><th>내 순위</th></tr></thead>
+        <tbody id="r-tbody"><tr><td colspan="6" style="text-align:center;color:#868e96;padding:24px">단지를 검색하면 실시간 익스텐션 바인딩이 시작됩니다.</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -409,8 +409,17 @@ function renderRankTab() {
     card('끌올 필요', warnCnt + '건', warnCnt > 0 ? 'warn' : 'ok') +
     card('3위 이내', okCnt + '건', 'ok');
 
+  // 🔥 [변경포인트 1] 끌올 필요(빨간색, rank > 3)가 있는 항목이 무조건 최상단으로 오도록 우선 정렬
+  const sortedRankResults = [..._rankResults].sort((a, b) => {
+    const aHasWarn = a.ranks.some(rk => rk.rank > 3);
+    const bHasWarn = b.ranks.some(rk => rk.rank > 3);
+    if (aHasWarn && !bHasWarn) return -1;
+    if (!aHasWarn && bHasWarn) return 1;
+    return 0;
+  });
+
   let rows = [];
-  _rankResults.forEach((r, rIdx) => {
+  sortedRankResults.forEach((r, rIdx) => {
     const hasWarn = r.ranks.some(rk => rk.rank > 3);
     const rankHtml = r.ranks.map(rk => {
       const w = rk.rank > 3;
@@ -418,20 +427,24 @@ function renderRankTab() {
            + ' <span style="font-size:11px;font-weight:normal;color:#868e96">(' + rk.cp + ')</span></span>';
     }).join(' · ');
 
+    // 🔥 [변경포인트 2] 동, 층, 면적구분을 각각 독립된 TD 컬럼으로 나누어 가독성 증대
     rows.push('<tr' + (hasWarn ? ' class="warn-row"' : '') + '>'
-      + '<td>' + r.building + ' ' + r.area + (r.ranks.length > 1 ? ' <span style="color:#868e96;font-size:12px">(' + r.ranks.length + '건)</span>' : '') + '</td>'
+      + '<td>' + (r.building || '-') + '</td>'
+      + '<td>' + (r.floor || '-') + '</td>'
+      + '<td>' + r.area + (r.ranks.length > 1 ? ' <span style="color:#868e96;font-size:12px">(' + r.ranks.length + '건)</span>' : '') + '</td>'
       + '<td>' + r.price + '</td>'
       + '<td><button class="realtor-btn" data-ridx="' + rIdx + '">' + r.total + '곳</button></td>'
       + '<td>' + rankHtml + ' / ' + r.total + '곳' + (hasWarn ? '<span class="badge">끌올</span>' : '') + '</td></tr>');
   });
 
   const rTbody = document.getElementById('r-tbody');
-  rTbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="4" style="text-align:center;color:#868e96;padding:24px">우리 중개사무소의 매물이 확인되지 않습니다.</td></tr>';
+  rTbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="6" style="text-align:center;color:#868e96;padding:24px">우리 중개사무소의 매물이 확인되지 않습니다.</td></tr>';
 
   rTbody.querySelectorAll('.realtor-btn[data-ridx]').forEach(btn => {
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      const r = _rankResults[parseInt(this.dataset.ridx)];
+      // 정렬된 배열(sortedRankResults)의 인덱스를 안전하게 매핑하여 바인딩
+      const r = sortedRankResults[parseInt(this.dataset.ridx)];
       showRealtorPopup(this, r.realtors || []);
     });
   });
@@ -776,8 +789,11 @@ def api_upload():
                 price_display = rep.get('dealOrWarrantPrc', '')
 
             if my_ranks:
+                # 🔥 [변경포인트 3] rank_results 추출 시 원본 층수 정보('floorInfo') 필드 추가 탑재
                 rank_results.append({
-                    'building': rep.get('buildingName', ''), 'area': rep.get('areaName', ''),
+                    'building': rep.get('buildingName', ''),
+                    'floor': rep.get('floorInfo', ''),
+                    'area': rep.get('areaName', ''),
                     'price': price_display, 'total': len(group),
                     'ranks': my_ranks, 'realtors': realtors_all
                 })
