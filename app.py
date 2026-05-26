@@ -271,6 +271,7 @@ HTML = '''<!DOCTYPE html>
       <div class="filter-row">
         <div class="fg"><label>거래유형</label><select id="f-trade" onchange="lRender()"><option value="">전체</option></select></div>
         <div class="fg"><label>동</label><select id="f-building" onchange="lRender()"><option value="">전체</option></select></div>
+        <div class="fg"><label>전용면적</label><select id="f-area" onchange="lRender()"><option value="">전체</option></select></div>
         <div class="fg"><label>공인중개사무소</label><select id="f-realtor" onchange="lRender()"><option value="">전체</option></select></div>
       </div>
 
@@ -498,6 +499,12 @@ function initFiltersAndRender() {
   }
   fillSel("f-trade","거래유형"); fillSel("f-building","동");
   fillSel("f-direction","방향"); fillSel("f-room","방수"); fillSel("f-bath","욕실수");
+  
+  const areaSet = [...new Set(_lRows.map(a => a["전용면적"] || "").filter(Boolean))];
+    areaSet.sort((a, b) => parseFloat(a) - parseFloat(b));
+    const aSel = document.getElementById("f-area");
+    aSel.innerHTML = "<option value=''>전체</option>";
+    areaSet.forEach(v => { const o = document.createElement("option"); o.value = v; o.textContent = v; aSel.appendChild(o); });
 
   const rs = new Set();
   _lRows.forEach(a=>(a["_중개사명목록"]||"").split("|").forEach(n=>{ if(n.trim()) rs.add(n.trim()); }));
@@ -552,6 +559,7 @@ function lRender() {
   const rMax    =parseFloat(document.getElementById("f-rent-max").value)||null;
 
   const excS    =document.getElementById("f-exc-seango").checked;
+  const area = document.getElementById("f-area").value;
 
   let rows=_lRows;
 
@@ -560,6 +568,9 @@ function lRender() {
 
   if(building)
     rows=rows.filter(r=>(r["동"]||"")===building);
+    
+  if(area)
+    rows = rows.filter(r => (r["전용면적"] || "") === area);
 
   if(realtor)
     rows=rows.filter(r=>(r["_중개사명목록"]||"")
@@ -777,7 +788,8 @@ function lResetFilters(){
     "f-room",
     "f-bath",
     "f-feature",
-    "f-realtor"
+    "f-realtor",
+    "f-area"
   ].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.value="";
