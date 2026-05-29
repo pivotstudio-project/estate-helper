@@ -1,7 +1,10 @@
-import { getEstateStorage, TARGET_REALTOR } from '../utils/store';
+// server/api/upload.post.ts
+
+import { getEstateStorage } from '../utils/store'; // TARGET_REALTOR 임포트 제거
 import { flattenArticle, fmtDate } from '../utils/formatter';
 
 function cleanNum(val: any): number {
+  // ... 기존 함수 유지 ...
   if (val == null || val === '') return 0;
   if (typeof val === 'number') return val;
   let s = String(val).replace(/,/g, "").trim();
@@ -61,6 +64,7 @@ export default defineEventHandler(async (event) => {
       let groupMaxRent = sortedRentsNum[sortedRentsNum.length - 1] || groupMinRent;
 
       if (tradeType === '월세') {
+        // ... (월세 가격 로직 기존과 동일) ...
         let w_disp = '';
         if (sortedWarrantsNum.length > 1) {
           w_disp = `${warrantsMap.get(sortedWarrantsNum[0])} ~ ${warrantsMap.get(sortedWarrantsNum[sortedWarrantsNum.length - 1])}`;
@@ -94,10 +98,8 @@ export default defineEventHandler(async (event) => {
         groupMaxRent = 0;
       }
 
-      const my_ranks = [];
+      // ✅ 기존의 my_ranks, myCpStatus 계산 로직은 서버에서 모두 제거합니다.
       const realtors_all = [];
-
-      const myCpStatus: Record<string, any> = { 아실: null, 이실장: null };
 
       for (let i = 0; i < group.length; i++) {
         const item = group[i];
@@ -105,33 +107,17 @@ export default defineEventHandler(async (event) => {
         const is_owner = (verif === 'OWNER') || Boolean(item.tradeCheckedByOwner);
         const is_site = (verif === 'SITE') || Boolean(item.siteImageCount);
         const c_date = fmtDate(item.articleConfirmYmd || '');
-
-        // ★ [핵심] 네이버가 숨겨서 내려주는 아실/이실장 외부 원본 브릿지 링크 주소 가로채기
         const externalCpUrl = item.cpPcArticleUrl || item.cpPcArticleBridgeUrl || '';
 
         let cpClean = (item.cpName || '기타').replace('부동산', '').trim();
         if (cpClean.includes('이실장')) cpClean = '이실장';
         if (cpClean.includes('아실')) cpClean = '아실';
 
-        if (item.realtorName && item.realtorName.includes(TARGET_REALTOR)) {
-          const rankInfo = {
-            rank: i + 1,
-            cp: cpClean,
-            is_owner,
-            is_site,
-            date: c_date,
-            cpUrl: externalCpUrl // 내 매물 랭킹 스코어에 외부 주소 바인딩
-          };
-          my_ranks.push(rankInfo);
-
-          if (cpClean === '아실') myCpStatus.아실 = rankInfo;
-          if (cpClean === '이실장') myCpStatus.이실장 = rankInfo;
-        }
-
         if (item.realtorName) {
+          // 서버는 그저 모든 부동산 목록을 리스트업만 합니다.
           realtors_all.push({
             name: item.realtorName,
-            cp: cpClean, // 매칭용 간소화 레이블 적용
+            cp: cpClean,
             is_owner,
             is_site,
             date: c_date,
@@ -154,8 +140,7 @@ export default defineEventHandler(async (event) => {
       row['_rawRentMin'] = groupMinRent;
       row['_rawRentMax'] = groupMaxRent;
 
-      row['ranks'] = my_ranks;
-      row['_myCpStatus'] = myCpStatus;
+      // ✅ 서버에서는 이제 전체 목록만 건네줍니다!
       row['중개사수'] = realtors_all.length;
       row['중개사목록'] = realtors_all;
       row['_중개사명목록'] = realtors_all.map(r => r.name).join('|');
@@ -168,7 +153,7 @@ export default defineEventHandler(async (event) => {
     await storage.setItem(complexNo, {
       status: "DONE",
       complex_name: complex_name,
-      rank_results: [],
+      rank_results: [], // 기존 사용 안 함
       article_results: article_results
     });
 

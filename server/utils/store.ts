@@ -1,7 +1,4 @@
-export const TARGET_REALTOR = "국민공인중개사사무소";
-
-// 메모리에 상주할 전역 변수 (기존 Flask의 _SHARED_DATA 역할)
-export const getEstateStorage = () => useStorage('data:estate');
+export const getEstateStorage = () => useStorage('estate');
 
 export const FIELD_MAP: Record<string, string> = {
   articleNo: "_매물번호", articleName: "원문", articleStatus: "_매물상태", realEstateTypeName: "_부동산유형",
