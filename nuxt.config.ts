@@ -20,4 +20,12 @@ export default defineNuxtConfig({
   },
 
   compatibilityDate: '2025-01-01',
+
+  nitro: {
+    storage: {
+      estate: {
+        driver: 'vercelKV'
+      }
+    }
+  }
 });
