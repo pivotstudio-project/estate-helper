@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "부동산 오리지널 이식 수집기",
-  "version": "9.5",
+  "version": "2.0",
   "permissions": ["tabs", "scripting"],
   "host_permissions": [
     "https://new.land.naver.com/*",
