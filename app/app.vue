@@ -118,11 +118,11 @@ const RANK_COLS = computed(() => {
                   <div class="text-2xl font-extrabold mt-1">{{ rankStats.total }}개</div>
                 </UiCard>
                 <UiCard class="p-4 bg-white shadow-sm border-slate-100 rounded-md">
-                  <div class="text-sm font-bold text-slate-600">매물 중 끌올 필요 (3위 밖)</div>
+                  <div class="text-sm font-bold text-slate-600">매물 중 끌올 필요 (2위 밖)</div>
                   <div class="text-2xl font-extrabold text-red-600 mt-1">{{ rankStats.warnCnt }}건</div>
                 </UiCard>
                 <UiCard class="p-4 bg-white shadow-sm border-slate-100 rounded-md">
-                  <div class="text-sm font-bold text-slate-600">매물 중 안정권 (3위 이내)</div>
+                  <div class="text-sm font-bold text-slate-600">매물 중 안정권 (2위 이내)</div>
                   <div class="text-2xl font-extrabold text-blue-600 mt-1">{{ rankStats.okCnt }}건</div>
                 </UiCard>
               </div>
@@ -179,7 +179,7 @@ const RANK_COLS = computed(() => {
                     :key="idx"
                     :class="[
                         !r._dynamicRanks || r._dynamicRanks.length === 0 ? 'bg-slate-50/50 opacity-75' :
-                        r._dynamicRanks.some((rk: any) => rk.rank > 3) ? 'bg-red-400/10 hover:bg-red-400/20 font-semibold' : 'bg-blue-500/10 hover:bg-blue-500/20',
+                        r._dynamicRanks.some((rk: any) => rk.rank > 2) ? 'bg-red-400/10 hover:bg-red-400/20 font-semibold' : 'bg-blue-500/10 hover:bg-blue-500/20',
                         'border-b border-slate-100 transition-colors'
                       ]"
                   >
@@ -203,7 +203,7 @@ const RANK_COLS = computed(() => {
                     <td v-for="cp in dynamicCPs" :key="cp" class="p-3 align-middle border-l border-slate-100">
                       <div v-if="r._dynamicCpStatus?.[cp]" class="flex flex-col gap-0.5">
                         <div class="flex items-center gap-1.5">
-                          <span :class="r._dynamicCpStatus[cp].rank > 3 ? 'text-red-600 font-black text-base' : 'text-blue-600 font-black text-base'">{{ r._dynamicCpStatus[cp].rank }}위</span>
+                          <span :class="r._dynamicCpStatus[cp].rank > 2 ? 'text-red-600 font-black text-base' : 'text-blue-600 font-black text-base'">{{ r._dynamicCpStatus[cp].rank }}위</span>
                           <UiBadge v-if="r._dynamicCpStatus[cp].is_owner" class="bg-red-100 text-red-700 font-bold text-[10px] px-1 rounded">집주인</UiBadge>
                           <UiBadge v-if="r._dynamicCpStatus[cp].is_site" class="bg-emerald-100 text-emerald-700 font-bold text-[10px] px-1 rounded">현장</UiBadge>
                         </div>

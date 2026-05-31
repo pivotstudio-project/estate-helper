@@ -61,7 +61,8 @@ export function useEstate() {
   ]);
   const MY_REALTOR = ref(realtorOptions.value[0]);
 
-  const COLS = ["동", "층", "총층수", "전용면적", "면적구분", "거래유형", "가격", "중개사수", "확인일", "방향", "방수", "특징"];
+  // ✅ 사용자가 요청한 매물확인 컬럼 순서로 변경
+  const COLS = ["거래유형", "동", "층", "총층수", "전용면적", "면적구분", "가격", "방향", "방수", "확인일", "중개사수"];
 
   // ✅ 선택된 부동산이 사용하는 CP 목록을 동적으로 수집 (가나다 순)
   const dynamicCPs = computed(() => {
@@ -209,11 +210,11 @@ export function useEstate() {
     return { total, byTrade };
   });
 
-  // ✅ 동적 랭크 기반 통계
+  // ✅ 동적 랭크 기반 통계 (끌올 기준: 2위 밖)
   const rankStats = computed(() => {
     const ourArticles = articleResults.value.filter(r => getMyRanks(r).my_ranks.length > 0);
-    const warnCnt = ourArticles.filter(r => getMyRanks(r).my_ranks.some((rk: any) => rk.rank > 3)).length;
-    const okCnt = ourArticles.filter(r => getMyRanks(r).my_ranks.every((rk: any) => rk.rank <= 3)).length;
+    const warnCnt = ourArticles.filter(r => getMyRanks(r).my_ranks.some((rk: any) => rk.rank > 2)).length;
+    const okCnt = ourArticles.filter(r => getMyRanks(r).my_ranks.every((rk: any) => rk.rank <= 2)).length;
     return { total: articleResults.value.length, warnCnt, okCnt };
   });
 
@@ -309,8 +310,9 @@ export function useEstate() {
       rows.sort((a, b) => {
         const aHasOur = a._dynamicRanks.length > 0;
         const bHasOur = b._dynamicRanks.length > 0;
-        const aNeedPull = aHasOur && a._dynamicRanks.some((rk: any) => rk.rank > 3);
-        const bNeedPull = bHasOur && b._dynamicRanks.some((rk: any) => rk.rank > 3);
+        // ✅ 끌올 기준 2위 밖
+        const aNeedPull = aHasOur && a._dynamicRanks.some((rk: any) => rk.rank > 2);
+        const bNeedPull = bHasOur && b._dynamicRanks.some((rk: any) => rk.rank > 2);
 
         const aScore = aNeedPull ? 3 : aHasOur ? 2 : 1;
         const bScore = bNeedPull ? 3 : bHasOur ? 2 : 1;
