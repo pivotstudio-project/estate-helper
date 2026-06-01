@@ -57,7 +57,8 @@ export function useEstate() {
 
   // Todo: 부동산 입력 필요
   const realtorOptions = ref([
-    "국민공인중개사사무소"
+    "국민공인중개사사무소",
+    "선사아이파크공인중개사사무소"
   ]);
   const MY_REALTOR = ref(realtorOptions.value[0]);
 
