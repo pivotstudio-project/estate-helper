@@ -10,20 +10,24 @@ export function useEstate() {
   const activeTab = ref('rank');
   const isSidebarOpen = ref(true);
 
-  // 백엔드 응답 상태
   const complexName = ref('조회된 단지 없음');
   const rankResults = ref<any[]>([]);
   const articleResults = ref<any[]>([]);
-  const isPyung = ref(false);
 
   let pollInterval: any = null;
   let extensionTimeout: any = null;
 
-  // 공인중개사 모달 팝업 상태
   const isModalOpen = ref(false);
   const modalRealtors = ref<any[]>([]);
 
-  // 필터 및 정렬 상태
+  // 선택 매물(인쇄용) 상태 관리
+  const selectedArticleIds = ref<number[]>([]);
+  const isPrintModalOpen = ref(false);
+
+  // ✅ 퀵 필터
+  const activeQuickFilter = ref<'urgent' | 'neglected' | 'safe' | null>(null);
+  const NEGLECT_DAYS = 7;
+
   const proFilters = ref({
     priceDrop: false,
     immediate: false,
@@ -51,21 +55,33 @@ export function useEstate() {
     excludeSeango: false
   });
 
-  // 전역 정렬 상태값
   const sortCol = ref('');
   const sortAsc = ref(false);
 
-  // Todo: 부동산 입력 필요
   const realtorOptions = ref([
     "국민공인중개사사무소",
     "선사아이파크공인중개사사무소"
   ]);
   const MY_REALTOR = ref(realtorOptions.value[0]);
 
-  // ✅ 사용자가 요청한 매물확인 컬럼 순서로 변경
-  const COLS = ["거래유형", "동", "층", "총층수", "전용면적", "면적구분", "가격", "방향", "방수", "확인일", "중개사수"];
+  const COLS = ["거래유형", "동", "층", "총층수", "전용면적", "면적구분", "가격", "방향", "방수", "확인일", "중개사수", "중개사목록"];
 
-  // ✅ 선택된 부동산이 사용하는 CP 목록을 동적으로 수집 (가나다 순)
+  const cleanRealtorName = (name: string) => {
+    if (!name) return '';
+    return name.replace(/(부동산)?공인중개사(사무소)?|부동산중개|부동산/g, '').trim();
+  };
+
+  const getUniqueRealtors = (list: any[]) => {
+    if (!Array.isArray(list)) return [];
+    const seen = new Set<string>();
+    return list.filter(r => {
+      const cleanName = cleanRealtorName(r.name);
+      if (seen.has(cleanName)) return false;
+      seen.add(cleanName);
+      return true;
+    });
+  };
+
   const dynamicCPs = computed(() => {
     const cps = new Set<string>();
     articleResults.value.forEach(a => {
@@ -80,7 +96,6 @@ export function useEstate() {
     return Array.from(cps).sort();
   });
 
-  // ✅ 특정 매물의 '선택한 부동산' 순위를 동적으로 계산하는 헬퍼 함수
   const getMyRanks = (article: any) => {
     const my_ranks: any[] = [];
     const myCpStatus: Record<string, any> = {};
@@ -121,7 +136,6 @@ export function useEstate() {
       if (isLoading.value) {
         isLoading.value = false;
         if (pollInterval) clearInterval(pollInterval);
-
         statusBannerMessage.value = "❌ 익스텐션 응답 시간 초과: 확장 프로그램 동작 상태를 확인하세요.";
         setTimeout(() => { showStatusBanner.value = false; }, 4000);
       }
@@ -191,7 +205,7 @@ export function useEstate() {
     });
     const features = new Set<string>();
     articleResults.value.forEach(a => {
-      (a.특징 || '').split(',').forEach((f: string) => { if (f.trim()) features.add(f.trim()); });
+      (a.특징태그 || '').split(',').forEach((f: string) => { if (f.trim()) features.add(f.trim()); });
     });
 
     return {
@@ -211,12 +225,33 @@ export function useEstate() {
     return { total, byTrade };
   });
 
-  // ✅ 동적 랭크 기반 통계 (끌올 기준: 2위 밖)
+  // ✅ rankStats - 퀵 필터용 카운트
   const rankStats = computed(() => {
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const neglectThreshold = now.getTime() - (NEGLECT_DAYS * 864e5);
+
     const ourArticles = articleResults.value.filter(r => getMyRanks(r).my_ranks.length > 0);
-    const warnCnt = ourArticles.filter(r => getMyRanks(r).my_ranks.some((rk: any) => rk.rank > 2)).length;
-    const okCnt = ourArticles.filter(r => getMyRanks(r).my_ranks.every((rk: any) => rk.rank <= 2)).length;
-    return { total: articleResults.value.length, warnCnt, okCnt };
+
+    const urgentCnt = ourArticles.filter(r =>
+      getMyRanks(r).my_ranks.some((rk: any) => rk.rank > 4)
+    ).length;
+
+    const neglectedCnt = ourArticles.filter(r =>
+      getMyRanks(r).my_ranks.some((rk: any) => {
+        if (!rk.date) return false;
+        const parts = rk.date.replace(/[\/\-]/g, '.').split('.');
+        if (parts.length < 3) return false;
+        const year = parts[0].length === 2 ? `20${parts[0]}` : parts[0];
+        const d = new Date(parseInt(year), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        return d.getTime() <= neglectThreshold;
+      })
+    ).length;
+
+    const safeCnt = ourArticles.filter(r =>
+      getMyRanks(r).my_ranks.every((rk: any) => rk.rank <= 2)
+    ).length;
+
+    return { total: articleResults.value.length, urgentCnt, neglectedCnt, safeCnt };
   });
 
   const filteredArticles = computed(() => {
@@ -229,7 +264,7 @@ export function useEstate() {
     if (mainFilters.value.room && mainFilters.value.room !== 'all') rows = rows.filter(r => r['방수'] === mainFilters.value.room);
     if (mainFilters.value.bath && mainFilters.value.bath !== 'all') rows = rows.filter(r => r['욕실수'] === mainFilters.value.bath);
     if (mainFilters.value.feature && mainFilters.value.feature !== 'all') {
-      rows = rows.filter(r => (r['특징'] || '').split(',').map((s: string) => s.trim()).includes(mainFilters.value.feature));
+      rows = rows.filter(r => (r['특징태그'] || '').split(',').map((s: string) => s.trim()).includes(mainFilters.value.feature));
     }
     if (mainFilters.value.realtor && mainFilters.value.realtor !== 'all') {
       rows = rows.filter(r => (r['_중개사명목록'] || '').split('|').map((s: string) => s.trim()).includes(mainFilters.value.realtor));
@@ -242,19 +277,15 @@ export function useEstate() {
     if (priceFilters.value.excludeSeango) {
       const seangoRegex = /세\s*안고|세\s*끼고|전세\s*안고/i;
       rows = rows.filter(r => {
-        const text = (r['특징'] || '') + (r['태그원문'] || '');
+        const text = (r['특징'] || '') + (r['특징태그'] || '') + (r['태그원문'] || '');
         return !seangoRegex.test(text);
       });
     }
 
-    if (proFilters.value.priceDrop) rows = rows.filter(r => r['가격변동여부'] === true || (r['특징'] || '').includes('급매'));
+    if (proFilters.value.priceDrop) rows = rows.filter(r => r['가격변동여부'] === true || (r['특징태그'] || '').includes('급매'));
     if (proFilters.value.immediate) rows = rows.filter(r => (r['입주유형'] || '').includes('즉시') || (r['입주유형'] || '').includes('공실') || (r['태그원문'] || '').includes('즉시입주'));
-
-    // ✅ 동적 MY_REALTOR 필터 적용
     if (proFilters.value.exclusiveOther) rows = rows.filter(r => r['중개사수'] === 1 && !(r['_중개사명목록'] || '').includes(MY_REALTOR.value));
-
     if (proFilters.value.owner) rows = rows.filter(r => r['구분'] === '집주인 직거래');
-
     if (proFilters.value.recent) {
       const now = new Date(); now.setHours(0, 0, 0, 0);
       const threeDaysAgo = now.getTime() - (3 * 864e5);
@@ -271,7 +302,6 @@ export function useEstate() {
           const cb = b['중개사수'] ?? b.total ?? 0;
           return sortAsc.value ? ca - cb : cb - ca;
         }
-
         const va = a[targetCol] ?? ''; const vb = b[targetCol] ?? '';
         const na = parseFloat(String(va).replace(/[^0-9.-]/g, '')); const nb = parseFloat(String(vb).replace(/[^0-9.-]/g, ''));
         const c = (!isNaN(na) && !isNaN(nb)) ? na - nb : String(va).localeCompare(String(vb), 'ko');
@@ -284,12 +314,32 @@ export function useEstate() {
     return rows;
   });
 
-  // ✅ 동적 랭크 기반 정렬 로직 (객체에 _dynamicRanks, _dynamicCpStatus 주입)
+  // ✅ sortedRankResults - activeQuickFilter 연동
   const sortedRankResults = computed(() => {
     let rows = filteredArticles.value.map(r => {
       const { my_ranks, myCpStatus } = getMyRanks(r);
       return { ...r, _dynamicRanks: my_ranks, _dynamicCpStatus: myCpStatus };
     });
+
+    // 퀵 필터 적용
+    if (activeQuickFilter.value === 'urgent') {
+      rows = rows.filter(r => r._dynamicRanks.some((rk: any) => rk.rank > 4));
+    } else if (activeQuickFilter.value === 'neglected') {
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const neglectThreshold = now.getTime() - (NEGLECT_DAYS * 864e5);
+      rows = rows.filter(r =>
+        r._dynamicRanks.some((rk: any) => {
+          if (!rk.date) return false;
+          const parts = rk.date.replace(/[\/\-]/g, '.').split('.');
+          if (parts.length < 3) return false;
+          const year = parts[0].length === 2 ? `20${parts[0]}` : parts[0];
+          const d = new Date(parseInt(year), parseInt(parts[1]) - 1, parseInt(parts[2]));
+          return d.getTime() <= neglectThreshold;
+        })
+      );
+    } else if (activeQuickFilter.value === 'safe') {
+      rows = rows.filter(r => r._dynamicRanks.length > 0 && r._dynamicRanks.every((rk: any) => rk.rank <= 2));
+    }
 
     if (sortCol.value && !dynamicCPs.value.includes(sortCol.value)) {
       rows.sort((a, b) => {
@@ -301,7 +351,6 @@ export function useEstate() {
           const cb = b['중개사수'] ?? b.total ?? 0;
           return sortAsc.value ? ca - cb : cb - ca;
         }
-
         const va = a[targetCol] ?? ''; const vb = b[targetCol] ?? '';
         const na = parseFloat(String(va).replace(/[^0-9.-]/g, '')); const nb = parseFloat(String(vb).replace(/[^0-9.-]/g, ''));
         const c = (!isNaN(na) && !isNaN(nb)) ? na - nb : String(va).localeCompare(String(vb), 'ko');
@@ -311,13 +360,10 @@ export function useEstate() {
       rows.sort((a, b) => {
         const aHasOur = a._dynamicRanks.length > 0;
         const bHasOur = b._dynamicRanks.length > 0;
-        // ✅ 끌올 기준 2위 밖
         const aNeedPull = aHasOur && a._dynamicRanks.some((rk: any) => rk.rank > 2);
         const bNeedPull = bHasOur && b._dynamicRanks.some((rk: any) => rk.rank > 2);
-
         const aScore = aNeedPull ? 3 : aHasOur ? 2 : 1;
         const bScore = bNeedPull ? 3 : bHasOur ? 2 : 1;
-
         if (aScore !== bScore) return bScore - aScore;
         return String(a['동'] || '').localeCompare(String(b['동'] || ''), 'ko');
       });
@@ -326,21 +372,240 @@ export function useEstate() {
     return rows;
   });
 
+  const toggleArticleSelection = (id: number) => {
+    const numId = Number(id);
+    if (selectedArticleIds.value.includes(numId)) {
+      selectedArticleIds.value = selectedArticleIds.value.filter(i => i !== numId);
+    } else {
+      selectedArticleIds.value = [...selectedArticleIds.value, numId];
+    }
+  };
+
+  const isSelectedArticle = (id: number) => selectedArticleIds.value.includes(Number(id));
+
+  const clearSelectedArticles = () => {
+    selectedArticleIds.value = [];
+  };
+
+  const toggleAllSelection = (checked: boolean) => {
+    if (checked) {
+      const newIds = new Set(selectedArticleIds.value);
+      filteredArticles.value.forEach(a => newIds.add(Number(a.순번)));
+      selectedArticleIds.value = Array.from(newIds);
+    } else {
+      const currentFilteredIds = filteredArticles.value.map(a => Number(a.순번));
+      selectedArticleIds.value = selectedArticleIds.value.filter(id => !currentFilteredIds.includes(id));
+    }
+  };
+
+  const selectedArticlesList = computed(() => {
+    return articleResults.value.filter(a => selectedArticleIds.value.includes(Number(a.순번)));
+  });
+
+  const isAllSelected = computed(() => {
+    return filteredArticles.value.length > 0
+      && filteredArticles.value.every(a => selectedArticleIds.value.includes(Number(a.순번)));
+  });
+
+  const isIndeterminate = computed(() => {
+    const selectedInFiltered = filteredArticles.value.filter(a => selectedArticleIds.value.includes(Number(a.순번)));
+    return selectedInFiltered.length > 0 && selectedInFiltered.length < filteredArticles.value.length;
+  });
+
+  const copyToast = ref(false);
+
+  const copySelection = async () => {
+    const lines = selectedArticlesList.value.map((item) => {
+      const pyung = (() => {
+        const v = item['전용면적'] || '';
+        if (v.includes('㎡')) {
+          const n = parseFloat(v.replace('㎡', ''));
+          if (!isNaN(n)) return `${Math.round(n * 0.3025)}평`;
+        }
+        return '';
+      })();
+
+      const dong = item['동'] || '';
+      const floor = item['층'] ? `${item['층']}층` : '';
+      const totalFloor = item['총층수'] ? `/${item['총층수']}층` : '';
+      const location = `${dong}, ${floor}${totalFloor}`;
+
+      const areaType = item['면적구분'] || '';
+      const direction = item['방향'] || '';
+      const price = item['가격'] || '';
+      const mainParts = [location, areaType, pyung, direction, price].filter(Boolean).join(', ');
+
+      // ✅ 특징 원문 사용
+      const 특징 = item['특징'] ? item['특징'].trim() : '';
+
+      return 특징 ? `${mainParts}\n${특징}` : mainParts;
+    });
+
+    const text = [
+      '매물 추천리스트',
+      '',
+      lines.join('\n\n'),
+      '',
+      '※ 가격 및 매물 현황은 변동될 수 있습니다.'
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      copyToast.value = true;
+      setTimeout(() => { copyToast.value = false; }, 2500);
+    } catch {
+      alert('복사에 실패했습니다. 브라우저 권한을 확인해주세요.');
+    }
+  };
+
+  const printSelection = () => {
+    const printWindow = window.open('', '_blank', 'width=900,height=900');
+    if (!printWindow) {
+      alert("팝업 차단이 설정되어 있습니다. 브라우저 설정에서 팝업을 허용해주세요.");
+      return;
+    }
+
+    const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const rows = selectedArticlesList.value.map((item, i) => {
+      const pyung = (() => {
+        const v = item['전용면적'] || '';
+        if (v.includes('㎡')) {
+          const n = parseFloat(v.replace('㎡', ''));
+          if (!isNaN(n)) return `${Math.round(n * 0.3025)}평`;
+        }
+        return '';
+      })();
+      const areaCell = [item['면적구분'] || '', pyung].filter(Boolean).join(' / ');
+      const floor = `${item['층'] || '-'}${item['총층수'] ? `/${item['총층수']}층` : ''}`;
+      const bathRaw = String(item['방수'] || '');
+      const bathNum = bathRaw.replace(/[^0-9]/g, '');
+      const bath = bathNum ? `${bathNum}개` : '-';
+      // ✅ 특징 원문 사용
+      const 특징 = item['특징'] || '-';
+      const tradeColor =
+        item['거래유형'] === '매매' ? 'color:#1d4ed8;background:#dbeafe' :
+          item['거래유형'] === '전세' ? 'color:#7e22ce;background:#f3e8ff' :
+            'color:#047857;background:#d1fae5';
+
+      return `
+        <tr>
+          <td style="text-align:center;color:#94a3b8;font-size:11px">${i + 1}</td>
+          <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-weight:800;font-size:11px;${tradeColor}">${item['거래유형']}</span></td>
+          <td style="font-weight:700">${item['동'] || '-'} <span style="color:#94a3b8;font-weight:400">${floor}</span></td>
+          <td>${areaCell}</td>
+          <td style="font-weight:900;font-size:14px">${item['가격'] || '-'}</td>
+          <td>${item['방향'] || '-'}</td>
+          <td>${bath}</td>
+          <td style="color:#475569;font-size:11px">${특징}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>매물 추천리스트</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body {
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+            font-size: 12px; color: #1e293b; background: #fff; padding: 28px 32px;
+          }
+          .doc-header {
+            display: flex; justify-content: space-between; align-items: flex-end;
+            margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #0f172a;
+          }
+          .doc-header h1 { font-size: 18px; font-weight: 900; color: #0f172a; }
+          .doc-header .meta { font-size: 11px; color: #64748b; text-align: right; line-height: 1.6; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          thead tr { background: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1; }
+          thead th { padding: 7px 8px; font-weight: 700; font-size: 11px; color: #475569; text-align: left; white-space: nowrap; }
+          tbody tr { border-bottom: 1px solid #e2e8f0; }
+          tbody tr:nth-child(even) { background: #f8fafc; }
+          tbody td { padding: 8px; vertical-align: middle; line-height: 1.4; }
+          .doc-footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; }
+          .print-btn {
+            position: fixed; top: 20px; right: 20px; padding: 9px 18px;
+            background: #4f46e5; color: white; border: none; border-radius: 6px;
+            font-weight: bold; font-size: 13px; cursor: pointer;
+          }
+          @media print {
+            .print-btn { display: none; }
+            body { padding: 16px 20px; }
+            thead tr { background: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            tbody tr:nth-child(even) { background: #f8fafc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        </style>
+      </head>
+      <body>
+        <button class="print-btn" onclick="window.print()">🖨️ 인쇄</button>
+        <div class="doc-header">
+          <h1>매물 추천리스트</h1>
+          <div class="meta">총 ${selectedArticlesList.value.length}건<br>출력일: ${today}</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40px;text-align:center">No.</th>
+              <th style="width:60px">거래</th>
+              <th style="width:120px">동 / 층</th>
+              <th style="width:80px">면적</th>
+              <th style="width:250px">가격</th>
+              <th style="width:60px">방향</th>
+              <th style="width:50px">방수</th>
+              <th>특징</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="doc-footer">※ 가격 및 매물 현황은 변동될 수 있습니다.</div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+  };
+
+  const formatDate = (val: string) => {
+    if (!val) return '-';
+    const parts = val.replace(/[\/\-]/g, '.').split('.');
+    if (parts.length < 3) return val;
+    const year = parts[0].length === 2 ? `20${parts[0]}` : parts[0];
+    const y = parseInt(year);
+    const m = parseInt(parts[1]) - 1;
+    const d = parseInt(parts[2]);
+    const date = new Date(y, m, d);
+    if (isNaN(date.getTime())) return val;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffMs = today.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffDays < 0) return val;
+    if (diffDays === 0) return `${val} (오늘)`;
+    return `${val} (${diffDays}일 전)`;
+  };
+
   const formatArea = (val: string) => {
     if (!val) return '-';
-    if (isPyung.value && val.includes('㎡')) {
-      const n = parseFloat(val.replace('㎡', '')); return !isNaN(n) ? Math.round(n * 0.3025) + '평' : val;
+    if (val.includes('㎡')) {
+      const n = parseFloat(val.replace('㎡', ''));
+      if (!isNaN(n)) {
+        const pyung = Math.round(n * 0.3025);
+        return `${val} / ${pyung}평`;
+      }
     }
     return val;
   };
 
   const toggleSort = (col: string) => {
-    // ✅ 동적 CP 컬럼은 정렬에서 제외
     if (dynamicCPs.value.includes(col)) return;
-
     let target = col;
     if (col === '경쟁사') target = '중개사수';
-
     if (sortCol.value === target) { sortAsc.value = !sortAsc.value; }
     else { sortCol.value = target; sortAsc.value = true; }
   };
@@ -350,19 +615,32 @@ export function useEstate() {
   const resetFilters = () => {
     Object.keys(mainFilters.value).forEach(k => (mainFilters.value as any)[k] = 'all');
     Object.keys(proFilters.value).forEach(k => (proFilters.value as any)[k] = false);
-    priceFilters.value.priceMin = null; priceFilters.value.priceMax = null; priceFilters.value.rentMin = null; priceFilters.value.rentMax = null; priceFilters.value.excludeSeango = false;
+    priceFilters.value.priceMin = null; priceFilters.value.priceMax = null;
+    priceFilters.value.rentMin = null; priceFilters.value.rentMax = null;
+    priceFilters.value.excludeSeango = false;
+    activeQuickFilter.value = null; // ✅ 퀵 필터도 초기화
   };
 
   const openRealtorModal = (list: any[]) => { modalRealtors.value = list || []; isModalOpen.value = true; };
 
   onMounted(() => { window.addEventListener("message", handleExtensionMessage); });
-  onUnmounted(() => { window.removeEventListener("message", handleExtensionMessage); if (pollInterval) clearInterval(pollInterval); if (extensionTimeout) clearTimeout(extensionTimeout); });
+  onUnmounted(() => {
+    window.removeEventListener("message", handleExtensionMessage);
+    if (pollInterval) clearInterval(pollInterval);
+    if (extensionTimeout) clearTimeout(extensionTimeout);
+  });
 
   return {
-    query, complexList, selectedComplexNo, isLoading, statusBannerMessage, showStatusBanner, activeTab, isSidebarOpen,
-    complexName, rankResults, articleResults, isPyung, isModalOpen, modalRealtors,
+    query, complexList, selectedComplexNo, isLoading, statusBannerMessage, showStatusBanner,
+    activeTab, isSidebarOpen, complexName, rankResults, articleResults, isModalOpen, modalRealtors,
     proFilters, mainFilters, priceFilters, sortCol, sortAsc, COLS,
-    MY_REALTOR, realtorOptions, dynamicCPs,
-    doSearch, doScrape, selectOptions, summaryStats, rankStats, sortedRankResults, filteredArticles, formatArea, toggleSort, resetSort, resetFilters, openRealtorModal
+    MY_REALTOR, realtorOptions, dynamicCPs, cleanRealtorName, getUniqueRealtors,
+    selectedArticleIds, isPrintModalOpen,
+    toggleArticleSelection, isSelectedArticle, toggleAllSelection, clearSelectedArticles,
+    selectedArticlesList, isAllSelected, isIndeterminate, printSelection, copySelection, copyToast,
+    doSearch, doScrape, selectOptions, summaryStats, rankStats,
+    sortedRankResults, filteredArticles, formatArea, formatDate, toggleSort, resetSort, resetFilters,
+    openRealtorModal,
+    activeQuickFilter, NEGLECT_DAYS, // ✅ 추가
   };
 }

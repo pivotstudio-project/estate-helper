@@ -44,6 +44,8 @@ export default defineEventHandler(async (event) => {
       const pricesMap = new Map<number, string>();
 
       for (const item of group) {
+        console.log('🔍 원본 item:', JSON.stringify(item, null, 2)) // 👈 이것만 추가
+
         const wStr = item.warrantPrc || item.dealOrWarrantPrc || '';
         const rStr = String(item.rentPrc || '');
         const pStr = item.dealPrc || item.dealOrWarrantPrc || '';
@@ -122,7 +124,8 @@ export default defineEventHandler(async (event) => {
             is_site,
             date: c_date,
             articleNo: item.articleNo || '',
-            cpUrl: externalCpUrl
+            cpUrl: externalCpUrl,
+            _debug: item
           });
         }
       }

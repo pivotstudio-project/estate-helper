@@ -135,7 +135,8 @@ export function flattenArticle(article: any, idx: number = 0) {
     if (feat_desc.includes(kw) && !features.includes(kw)) features.push(kw);
   }
 
-  out.특징 = features.join(", ");
+  out.특징 = feat_desc;                // ✅ articleFeatureDesc 원문으로 교체
+  out.특징태그 = features.join(", ");  // ✅ tagList 기반 기존 로직 보존
   out.태그원문 = tag_raw;
   out.가격변동여부 = Boolean(raw._가격변동 || raw._가격변경 || raw._가격변경2 || raw.isPriceModification);
   out.입주유형 = String(raw._입주유형 || raw.moveInTypeName || "");
