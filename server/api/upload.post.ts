@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
       const pricesMap = new Map<number, string>();
 
       for (const item of group) {
-        console.log('🔍 원본 item:', JSON.stringify(item, null, 2)) // 👈 이것만 추가
+        // console.log('🔍 원본 item:', JSON.stringify(item, null, 2))
 
         const wStr = item.warrantPrc || item.dealOrWarrantPrc || '';
         const rStr = String(item.rentPrc || '');
