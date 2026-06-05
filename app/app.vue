@@ -53,6 +53,8 @@ const {
   copyToast,
   activeQuickFilter,
   NEGLECT_DAYS,
+  supplyAreaToPyung,
+  realtorRanking
 } = useEstate();
 
 const displayCols = computed(() => {
@@ -74,6 +76,7 @@ const RANK_COLS = computed(() => {
       v-model:proFilters="proFilters"
       :active-tab="activeTab"
       :select-options="selectOptions"
+      :realtor-ranking="realtorRanking"
       @reset="resetFilters"
     />
 
@@ -129,7 +132,7 @@ const RANK_COLS = computed(() => {
           <UiTabsContent value="rank" class="h-full m-0 outline-none">
             <div class="h-full flex flex-col gap-4 p-6 pt-0 overflow-hidden">
 
-              <!-- ✅ 퀵 필터 박스 3개 -->
+              <!-- 퀵 필터 박스 3개 -->
               <div class="grid grid-cols-3 gap-4 flex-none">
 
                 <!-- 즉시 확인 -->
@@ -291,7 +294,7 @@ const RANK_COLS = computed(() => {
                         {{ r['거래유형'] || '-' }}
                       </UiBadge>
                     </td>
-                    <!-- ✅ 가격 + 특징 원문 -->
+                    <!-- 가격 + 특징 원문 -->
                     <td class="p-3">
                       <div class="font-bold text-base text-slate-900 leading-none">{{ r['가격'] || '-' }}</div>
                       <div v-if="r['특징']" class="text-xs text-slate-400 mt-1 font-normal whitespace-normal max-w-[200px]">
@@ -466,10 +469,9 @@ const RANK_COLS = computed(() => {
                       <template v-else-if="c === '총층수'">
                         <span>{{ row['총층수'] ? `${row['총층수']}층` : '-' }}</span>
                       </template>
-                      <!-- ✅ 가격 셀 - 특징 원문 추가 -->
+                      <!-- 가격 셀 - 특징 원문 -->
                       <template v-else-if="c === '가격'">
                         <div class="flex flex-col gap-1">
-                          <!-- 가격 + 특징태그 가로 배치 -->
                           <div class="flex flex-row items-center gap-1.5 flex-wrap">
                             <span class="font-bold text-slate-900 text-base leading-none">{{ row[c] ?? '' }}</span>
                             <template v-if="row['특징태그']">
@@ -482,7 +484,6 @@ const RANK_COLS = computed(() => {
                               </span>
                             </template>
                           </div>
-                          <!-- 특징 원문 아래 -->
                           <div v-if="row['특징']" class="text-sm text-slate-500 font-normal whitespace-normal max-w-[280px]">
                             {{ row['특징'] }}
                           </div>
@@ -556,20 +557,20 @@ const RANK_COLS = computed(() => {
               </div>
               <div class="flex gap-2 flex-none ml-4">
                 <a
-                v-if="r.articleNo"
-                :href="`https://new.land.naver.com/article/${r.articleNo}`"
-                target="_blank"
-                class="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-md text-base font-bold transition-colors shadow-2xs"
+                  v-if="r.articleNo"
+                  :href="`https://new.land.naver.com/article/${r.articleNo}`"
+                  target="_blank"
+                  class="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-md text-base font-bold transition-colors shadow-2xs"
                 >
-                N 상세
+                  N 상세
                 </a>
                 <a
-                v-if="r.cpUrl"
-                :href="r.cpUrl"
-                target="_blank"
-                class="text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-md text-base font-bold transition-colors shadow-2xs"
+                  v-if="r.cpUrl"
+                  :href="r.cpUrl"
+                  target="_blank"
+                  class="text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-md text-base font-bold transition-colors shadow-2xs"
                 >
-                {{ r.cp }} 상세
+                  {{ r.cp }} 상세
                 </a>
               </div>
             </div>
@@ -578,9 +579,9 @@ const RANK_COLS = computed(() => {
       </UiDialogContent>
     </UiDialog>
 
-    <!-- 선택 매물 모아보기 모달 -->
+    <!-- ✅ 선택 매물 모아보기 모달 — 너비 확대 + 중개사 컬럼 추가 -->
     <UiDialog v-model:open="isPrintModalOpen">
-      <UiDialogContent class="!max-w-5xl w-full bg-white p-0 rounded-md shadow-xl border border-slate-100 max-h-[88vh] flex flex-col overflow-hidden">
+      <UiDialogContent class="!max-w-[70vw] w-full bg-white p-0 rounded-md shadow-xl border border-slate-100 max-h-[88vh] flex flex-col overflow-hidden">
 
         <div class="flex justify-between items-center border-b border-slate-100 px-6 py-4 flex-none">
           <div>
@@ -624,10 +625,12 @@ const RANK_COLS = computed(() => {
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-20">거래</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-36">동 / 층</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-32">면적</th>
-              <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-70">가격</th>
+              <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-56">가격</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-20">방향</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-16">방수</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500">특징</th>
+              <!-- ✅ 중개사 컬럼 추가 -->
+              <th class="px-4 py-2.5 text-xs font-bold text-slate-500">중개사</th>
             </tr>
             </thead>
             <tbody>
@@ -651,22 +654,36 @@ const RANK_COLS = computed(() => {
                 {{ item['동'] }}
                 <span class="text-slate-400 font-normal ml-0.5">{{ item['층'] }}{{ item['총층수'] ? `/${item['총층수']}층` : '' }}</span>
               </td>
+              <!-- ✅ 면적: 면적구분 + 공급면적 기준 평수 -->
               <td class="px-4 py-3 whitespace-nowrap">
                 <span class="text-sm font-bold text-slate-800">{{ item['면적구분'] || '' }}</span>
-                <span class="text-xs text-slate-400 ml-1">{{ formatArea(item['전용면적']) }}</span>
+                <span class="text-xs text-slate-400 ml-1">{{ supplyAreaToPyung(item['공급면적']) }}</span>
               </td>
               <td class="px-4 py-3 text-sm font-black text-slate-900 whitespace-nowrap">{{ item['가격'] }}</td>
               <td class="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">{{ item['방향'] || '-' }}</td>
               <td class="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">{{ item['방수'] ? `${String(item['방수']).replace(/[^0-9]/g, '')}개` : '-' }}</td>
-              <!-- ✅ 특징 원문으로 교체 -->
+              <!-- 특징 원문 -->
               <td class="px-4 py-3">
-                <div class="text-xs text-slate-600 whitespace-normal max-w-[240px]">
+                <div class="text-xs text-slate-600 whitespace-normal max-w-[200px]">
                   {{ item['특징'] || '-' }}
+                </div>
+              </td>
+              <!-- ✅ 중개사 목록 셀 (인쇄/복사에는 포함 안 됨, 화면 전용) -->
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap gap-1 max-w-[200px]">
+                  <span
+                    v-for="(r, ri) in getUniqueRealtors(item['중개사목록'])"
+                    :key="ri"
+                    :class="r.name.includes(MY_REALTOR) ? 'bg-blue-100 text-blue-700 border-blue-200 font-bold' : 'bg-slate-100 text-slate-600 border-slate-200'"
+                    class="w-auto text-xs px-1.5 py-0.5 rounded border whitespace-nowrap"
+                  >
+                    {{ cleanRealtorName(r.name) }}
+                  </span>
                 </div>
               </td>
             </tr>
             <tr v-if="!selectedArticlesList.length">
-              <td colspan="8" class="px-4 py-12 text-center text-sm text-slate-400">
+              <td colspan="9" class="px-4 py-12 text-center text-sm text-slate-400">
                 선택된 매물이 없습니다.
               </td>
             </tr>

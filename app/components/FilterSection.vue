@@ -1,7 +1,10 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue';
+
+const props = defineProps<{
   selectOptions: any;
   activeTab: string;
+  realtorRanking: { name: string; count: number }[];
 }>();
 
 const mainFilters = defineModel<any>('mainFilters', { required: true });
@@ -9,6 +12,24 @@ const priceFilters = defineModel<any>('priceFilters', { required: true });
 const proFilters = defineModel<any>('proFilters', { required: true });
 
 const emit = defineEmits(['reset']);
+
+const cleanRealtorName = (name: string) => {
+  if (!name) return '';
+  return name.replace(/(부동산)?공인중개사(사무소)?|부동산중개|부동산/g, '').trim();
+};
+
+// ✅ 현재 선택된 보유랭킹 항목 — 트리거 표시용
+const selectedRankItem = computed(() => {
+  if (mainFilters.value.realtor === 'all') return null;
+  const idx = props.realtorRanking.findIndex(r => r.name === mainFilters.value.realtor);
+  if (idx === -1) return null;
+  const item = props.realtorRanking[idx];
+  return {
+    rank: idx + 1,
+    shortName: cleanRealtorName(item.name),
+    count: item.count,
+  };
+});
 </script>
 
 <template>
@@ -31,7 +52,7 @@ const emit = defineEmits(['reset']);
           <span class="text-sm font-black text-blue-800 tracking-wide block uppercase">빠른 매칭</span>
           <div class="grid grid-cols-2 gap-2">
             <button
-              v-for="(label, key) in { priceDrop: '급매', immediate: '즉시입주', exclusiveOther: '타사독점', owner: '집주인', recent: '3일내신규' }"
+              v-for="(label, key) in { exclusiveOther: '타사독점', recent: '3일 내 신규' }"
               :key="key"
               :class="proFilters[key] ? 'bg-blue-600 text-white shadow-sm border-blue-600' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'"
               class="w-full text-center text-sm font-bold px-3 py-2.5 rounded-md transition-all cursor-pointer select-none border truncate"
@@ -90,6 +111,22 @@ const emit = defineEmits(['reset']);
               </UiSelect>
             </div>
             <div class="flex flex-col gap-1.5">
+              <UiLabel class="text-sm font-bold text-slate-700">면적구분</UiLabel>
+              <UiSelect v-model="mainFilters.areaType">
+                <UiSelectTrigger class="h-10 w-full bg-slate-50 border-slate-200 rounded-md px-3 text-sm text-left">
+                  <UiSelectValue />
+                </UiSelectTrigger>
+                <UiSelectContent>
+                  <UiSelectGroup>
+                    <UiSelectItem value="all">전체</UiSelectItem>
+                    <UiSelectItem v-for="o in selectOptions.areaType" :key="o" :value="o">{{ o }}</UiSelectItem>
+                  </UiSelectGroup>
+                </UiSelectContent>
+              </UiSelect>
+            </div>
+
+            <!-- 공인중개사무소 -->
+            <div class="flex flex-col gap-1.5">
               <UiLabel class="text-sm font-bold text-slate-700">공인중개사무소</UiLabel>
               <UiSelect v-model="mainFilters.realtor">
                 <UiSelectTrigger class="h-10 w-full bg-slate-50 border-slate-200 rounded-md px-3 text-sm text-left">
@@ -99,6 +136,42 @@ const emit = defineEmits(['reset']);
                   <UiSelectGroup>
                     <UiSelectItem value="all">전체</UiSelectItem>
                     <UiSelectItem v-for="o in selectOptions.realtor" :key="o" :value="o">{{ o }}</UiSelectItem>
+                  </UiSelectGroup>
+                </UiSelectContent>
+              </UiSelect>
+            </div>
+
+            <div v-if="activeTab === 'listing'" class="flex flex-col gap-1.5 col-span-2">
+              <UiLabel class="text-sm font-bold text-slate-700">
+                보유랭킹
+                <span class="text-xs font-normal text-slate-400 ml-1">(현재 조건 기준)</span>
+              </UiLabel>
+              <UiSelect
+                :model-value="mainFilters.realtor"
+                @update:model-value="(val: string) => mainFilters.realtor = val"
+              >
+                <UiSelectTrigger class="h-10 w-full bg-slate-50 border-slate-200 rounded-md px-3 text-sm text-left">
+                  <span v-if="selectedRankItem" class="inline-flex items-center gap-1.5 text-sm">
+                    <span class="text-slate-400 font-bold">{{ selectedRankItem.rank }}위</span>
+                    <span class="text-slate-700 font-bold">{{ selectedRankItem.shortName }}</span>
+                    <span class="text-blue-600 font-bold">{{ selectedRankItem.count }}건</span>
+                  </span>
+                  <span v-else class="text-slate-400 text-sm">순위 선택</span>
+                </UiSelectTrigger>
+                <UiSelectContent class="w-[360px]">
+                  <UiSelectGroup>
+                    <UiSelectItem value="all">전체 (필터 해제)</UiSelectItem>
+                    <UiSelectItem
+                      v-for="(item, idx) in realtorRanking"
+                      :key="item.name"
+                      :value="item.name"
+                    >
+                      <span class="inline-flex items-center gap-2 w-full">
+                        <span class="text-slate-400 font-bold w-4 text-right flex-none">{{ idx + 1 }}</span>
+                        <span class="flex-1">{{ item.name }}</span>
+                        <span class="text-blue-600 font-bold flex-none">{{ item.count }}건</span>
+                      </span>
+                    </UiSelectItem>
                   </UiSelectGroup>
                 </UiSelectContent>
               </UiSelect>
