@@ -35,10 +35,10 @@ export function useEstate() {
   });
 
   const mainFilters = ref({
-    trade: 'all',
-    building: 'all',
-    area: 'all',
-    areaType: 'all',
+    trade: [] as string[],
+    building: [] as string[],
+    area: [] as string[],
+    areaType: [] as string[],
     realtor: 'all',
     direction: 'all',
     room: 'all',
@@ -270,10 +270,14 @@ export function useEstate() {
   const filteredArticlesWithoutRealtor = computed(() => {
     let rows = articleResults.value;
 
-    if (mainFilters.value.trade !== 'all') rows = rows.filter(r => r['거래유형'] === mainFilters.value.trade);
-    if (mainFilters.value.building !== 'all') rows = rows.filter(r => r['동'] === mainFilters.value.building);
-    if (mainFilters.value.area !== 'all') rows = rows.filter(r => r['전용면적'] === mainFilters.value.area);
-    if (mainFilters.value.areaType !== 'all') rows = rows.filter(r => r['면적구분'] === mainFilters.value.areaType);
+    if (mainFilters.value.trade.length)
+      rows = rows.filter(r => mainFilters.value.trade.includes(r['거래유형']));
+    if (mainFilters.value.building.length)
+      rows = rows.filter(r => mainFilters.value.building.includes(r['동']));
+    if (mainFilters.value.area.length)
+      rows = rows.filter(r => mainFilters.value.area.includes(r['전용면적']));
+    if (mainFilters.value.areaType.length)
+      rows = rows.filter(r => mainFilters.value.areaType.includes(r['면적구분']));
     if (mainFilters.value.direction !== 'all') rows = rows.filter(r => r['방향'] === mainFilters.value.direction);
     if (mainFilters.value.room !== 'all') rows = rows.filter(r => r['방수'] === mainFilters.value.room);
     if (mainFilters.value.bath !== 'all') rows = rows.filter(r => r['욕실수'] === mainFilters.value.bath);
@@ -531,7 +535,18 @@ export function useEstate() {
   const resetSort = () => { sortCol.value = ''; sortAsc.value = false; };
 
   const resetFilters = () => {
-    Object.keys(mainFilters.value).forEach(k => (mainFilters.value as any)[k] = 'all');
+    // 멀티셀렉트 4개는 빈 배열로
+    mainFilters.value.trade = [];
+    mainFilters.value.building = [];
+    mainFilters.value.area = [];
+    mainFilters.value.areaType = [];
+    // 나머지는 기존 방식 유지
+    mainFilters.value.realtor = 'all';
+    mainFilters.value.direction = 'all';
+    mainFilters.value.room = 'all';
+    mainFilters.value.bath = 'all';
+    mainFilters.value.feature = 'all';
+
     Object.keys(proFilters.value).forEach(k => (proFilters.value as any)[k] = false);
     priceFilters.value.priceMin = null; priceFilters.value.priceMax = null;
     priceFilters.value.rentMin = null; priceFilters.value.rentMax = null;

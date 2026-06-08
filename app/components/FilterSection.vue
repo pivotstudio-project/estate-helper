@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 const props = defineProps<{
   selectOptions: any;
@@ -18,18 +18,44 @@ const cleanRealtorName = (name: string) => {
   return name.replace(/(부동산)?공인중개사(사무소)?|부동산중개|부동산/g, '').trim();
 };
 
-// ✅ 현재 선택된 보유랭킹 항목 — 트리거 표시용
 const selectedRankItem = computed(() => {
   if (mainFilters.value.realtor === 'all') return null;
   const idx = props.realtorRanking.findIndex(r => r.name === mainFilters.value.realtor);
   if (idx === -1) return null;
   const item = props.realtorRanking[idx];
-  return {
-    rank: idx + 1,
-    shortName: cleanRealtorName(item.name),
-    count: item.count,
-  };
+  return { rank: idx + 1, shortName: cleanRealtorName(item.name), count: item.count };
 });
+
+// 멀티셀렉트 팝오버 열림 상태
+const openPopovers = ref({
+  trade: false,
+  building: false,
+  area: false,
+  areaType: false,
+});
+
+// 멀티셀렉트 토글 헬퍼
+const toggleMulti = (field: 'trade' | 'building' | 'area' | 'areaType', value: string) => {
+  const arr: string[] = mainFilters.value[field];
+  const idx = arr.indexOf(value);
+  if (idx === -1) {
+    mainFilters.value[field] = [...arr, value];
+  } else {
+    mainFilters.value[field] = arr.filter((v: string) => v !== value);
+  }
+};
+
+const isSelected = (field: 'trade' | 'building' | 'area' | 'areaType', value: string) => {
+  return mainFilters.value[field].includes(value);
+};
+
+// 트리거 라벨 생성
+const multiLabel = (field: 'trade' | 'building' | 'area' | 'areaType', placeholder: string) => {
+  const arr: string[] = mainFilters.value[field];
+  if (!arr.length) return placeholder;
+  if (arr.length === 1) return arr[0];
+  return `${arr[0]} 외 ${arr.length - 1}`;
+};
 </script>
 
 <template>
@@ -48,6 +74,7 @@ const selectedRankItem = computed(() => {
     <div class="flex-1 flex flex-col min-h-0 bg-white">
       <div class="flex-1 overflow-y-auto p-5 space-y-6">
 
+        <!-- 빠른 매칭 (listing 탭만) -->
         <div v-if="activeTab === 'listing'" class="space-y-3">
           <span class="text-sm font-black text-blue-800 tracking-wide block uppercase">빠른 매칭</span>
           <div class="grid grid-cols-2 gap-2">
@@ -65,67 +92,132 @@ const selectedRankItem = computed(() => {
 
         <div v-if="activeTab === 'listing'" class="h-px bg-slate-100" />
 
+        <!-- 주요 필터 -->
         <div class="space-y-3">
           <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">주요 필터</div>
           <div class="grid grid-cols-2 gap-3">
+
+            <!-- 거래유형 멀티셀렉트 -->
             <div class="flex flex-col gap-1.5">
               <UiLabel class="text-sm font-bold text-slate-700">거래유형</UiLabel>
-              <UiSelect v-model="mainFilters.trade">
-                <UiSelectTrigger class="h-10 w-full bg-slate-50 border-slate-200 rounded-md px-3 text-sm text-left">
-                  <UiSelectValue />
-                </UiSelectTrigger>
-                <UiSelectContent>
-                  <UiSelectGroup>
-                    <UiSelectItem value="all">전체</UiSelectItem>
-                    <UiSelectItem v-for="o in selectOptions.trade" :key="o" :value="o">{{ o }}</UiSelectItem>
-                  </UiSelectGroup>
-                </UiSelectContent>
-              </UiSelect>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <UiLabel class="text-sm font-bold text-slate-700">동</UiLabel>
-              <UiSelect v-model="mainFilters.building">
-                <UiSelectTrigger class="h-10 w-full bg-slate-50 border-slate-200 rounded-md px-3 text-sm text-left">
-                  <UiSelectValue />
-                </UiSelectTrigger>
-                <UiSelectContent>
-                  <UiSelectGroup>
-                    <UiSelectItem value="all">전체</UiSelectItem>
-                    <UiSelectItem v-for="o in selectOptions.building" :key="o" :value="o">{{ o }}</UiSelectItem>
-                  </UiSelectGroup>
-                </UiSelectContent>
-              </UiSelect>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <UiLabel class="text-sm font-bold text-slate-700">전용면적</UiLabel>
-              <UiSelect v-model="mainFilters.area">
-                <UiSelectTrigger class="h-10 w-full bg-slate-50 border-slate-200 rounded-md px-3 text-sm text-left">
-                  <UiSelectValue />
-                </UiSelectTrigger>
-                <UiSelectContent>
-                  <UiSelectGroup>
-                    <UiSelectItem value="all">전체</UiSelectItem>
-                    <UiSelectItem v-for="o in selectOptions.area" :key="o" :value="o">{{ o }}</UiSelectItem>
-                  </UiSelectGroup>
-                </UiSelectContent>
-              </UiSelect>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <UiLabel class="text-sm font-bold text-slate-700">면적구분</UiLabel>
-              <UiSelect v-model="mainFilters.areaType">
-                <UiSelectTrigger class="h-10 w-full bg-slate-50 border-slate-200 rounded-md px-3 text-sm text-left">
-                  <UiSelectValue />
-                </UiSelectTrigger>
-                <UiSelectContent>
-                  <UiSelectGroup>
-                    <UiSelectItem value="all">전체</UiSelectItem>
-                    <UiSelectItem v-for="o in selectOptions.areaType" :key="o" :value="o">{{ o }}</UiSelectItem>
-                  </UiSelectGroup>
-                </UiSelectContent>
-              </UiSelect>
+              <UiPopover v-model:open="openPopovers.trade">
+                <UiPopoverTrigger as-child>
+                  <button
+                    class="h-10 w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-sm text-left flex items-center justify-between gap-2 hover:bg-slate-100 transition-colors"
+                    :class="mainFilters.trade.length ? 'text-slate-900 font-semibold' : 'text-slate-400'"
+                  >
+                    <span class="truncate">{{ multiLabel('trade', '전체') }}</span>
+                    <svg class="w-4 h-4 text-slate-400 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                  </button>
+                </UiPopoverTrigger>
+                <UiPopoverContent class="w-48 p-2" align="start">
+                  <label
+                    v-for="opt in selectOptions.trade"
+                    :key="opt"
+                    class="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer select-none"
+                  >
+                    <UiCheckbox
+                      :model-value="isSelected('trade', opt)"
+                      @update:modelValue="toggleMulti('trade', opt)"
+                    />
+                    <span class="text-sm text-slate-700">{{ opt }}</span>
+                  </label>
+                </UiPopoverContent>
+              </UiPopover>
             </div>
 
-            <!-- 공인중개사무소 -->
+            <!-- 동 멀티셀렉트 -->
+            <div class="flex flex-col gap-1.5">
+              <UiLabel class="text-sm font-bold text-slate-700">동</UiLabel>
+              <UiPopover v-model:open="openPopovers.building">
+                <UiPopoverTrigger as-child>
+                  <button
+                    class="h-10 w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-sm text-left flex items-center justify-between gap-2 hover:bg-slate-100 transition-colors"
+                    :class="mainFilters.building.length ? 'text-slate-900 font-semibold' : 'text-slate-400'"
+                  >
+                    <span class="truncate">{{ multiLabel('building', '전체') }}</span>
+                    <svg class="w-4 h-4 text-slate-400 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                  </button>
+                </UiPopoverTrigger>
+                <UiPopoverContent class="w-48 p-2 max-h-64 overflow-y-auto" align="start">
+                  <label
+                    v-for="opt in selectOptions.building"
+                    :key="opt"
+                    class="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer select-none"
+                  >
+                    <UiCheckbox
+                      :model-value="isSelected('building', opt)"
+                      @update:modelValue="toggleMulti('building', opt)"
+                    />
+                    <span class="text-sm text-slate-700">{{ opt }}</span>
+                  </label>
+                </UiPopoverContent>
+              </UiPopover>
+            </div>
+
+            <!-- 전용면적 멀티셀렉트 -->
+            <div class="flex flex-col gap-1.5">
+              <UiLabel class="text-sm font-bold text-slate-700">전용면적</UiLabel>
+              <UiPopover v-model:open="openPopovers.area">
+                <UiPopoverTrigger as-child>
+                  <button
+                    class="h-10 w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-sm text-left flex items-center justify-between gap-2 hover:bg-slate-100 transition-colors"
+                    :class="mainFilters.area.length ? 'text-slate-900 font-semibold' : 'text-slate-400'"
+                  >
+                    <span class="truncate">{{ multiLabel('area', '전체') }}</span>
+                    <svg class="w-4 h-4 text-slate-400 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                  </button>
+                </UiPopoverTrigger>
+                <UiPopoverContent class="w-48 p-2 max-h-64 overflow-y-auto" align="start">
+                  <div class="space-y-1">
+                    <label
+                      v-for="opt in selectOptions.area"
+                      :key="opt"
+                      class="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer select-none"
+                    >
+                      <UiCheckbox
+                        :model-value="isSelected('area', opt)"
+                        @update:modelValue="toggleMulti('area', opt)"
+                      />
+                      <span class="text-sm text-slate-700">{{ opt }}</span>
+                    </label>
+                  </div>
+                </UiPopoverContent>
+              </UiPopover>
+            </div>
+
+            <!-- 면적구분 멀티셀렉트 -->
+            <div class="flex flex-col gap-1.5">
+              <UiLabel class="text-sm font-bold text-slate-700">면적구분</UiLabel>
+              <UiPopover v-model:open="openPopovers.areaType">
+                <UiPopoverTrigger as-child>
+                  <button
+                    class="h-10 w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-sm text-left flex items-center justify-between gap-2 hover:bg-slate-100 transition-colors"
+                    :class="mainFilters.areaType.length ? 'text-slate-900 font-semibold' : 'text-slate-400'"
+                  >
+                    <span class="truncate">{{ multiLabel('areaType', '전체') }}</span>
+                    <svg class="w-4 h-4 text-slate-400 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                  </button>
+                </UiPopoverTrigger>
+                <UiPopoverContent class="w-48 p-2 max-h-64 overflow-y-auto" align="start">
+                  <div class="space-y-1">
+                    <label
+                      v-for="opt in selectOptions.areaType"
+                      :key="opt"
+                      class="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer select-none"
+                    >
+                      <UiCheckbox
+                        :model-value="isSelected('areaType', opt)"
+                        @update:modelValue="toggleMulti('areaType', opt)"
+                      />
+                      <span class="text-sm text-slate-700">{{ opt }}</span>
+                    </label>
+                  </div>
+                </UiPopoverContent>
+              </UiPopover>
+            </div>
+
+            <!-- 공인중개사무소 (기존 UiSelect 유지) -->
             <div class="flex flex-col gap-1.5">
               <UiLabel class="text-sm font-bold text-slate-700">공인중개사무소</UiLabel>
               <UiSelect v-model="mainFilters.realtor">
@@ -141,6 +233,7 @@ const selectedRankItem = computed(() => {
               </UiSelect>
             </div>
 
+            <!-- 보유랭킹 (listing 탭만, 기존 유지) -->
             <div v-if="activeTab === 'listing'" class="flex flex-col gap-1.5 col-span-2">
               <UiLabel class="text-sm font-bold text-slate-700">
                 보유랭킹
@@ -176,11 +269,13 @@ const selectedRankItem = computed(() => {
                 </UiSelectContent>
               </UiSelect>
             </div>
+
           </div>
         </div>
 
         <div class="h-px bg-slate-100" />
 
+        <!-- 금액 및 세안고 제외 (기존 유지) -->
         <div class="space-y-3">
           <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">금액 및 세안고 제외</div>
           <div class="space-y-3">
@@ -209,6 +304,7 @@ const selectedRankItem = computed(() => {
 
         <div class="h-px bg-slate-100" />
 
+        <!-- 상세 필터 (기존 유지) -->
         <div class="space-y-3">
           <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">상세 필터</div>
           <div class="grid grid-cols-2 gap-3">
