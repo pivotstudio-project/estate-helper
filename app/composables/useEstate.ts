@@ -22,6 +22,7 @@ export function useEstate() {
 
   const selectedArticleIds = ref<number[]>([]);
   const isPrintModalOpen = ref(false);
+  const showRealtorInPrint = ref(false);
 
   const activeQuickFilter = ref<'urgent' | 'neglected' | 'safe' | null>(null);
   const NEGLECT_DAYS = 7;
@@ -483,6 +484,8 @@ export function useEstate() {
 
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
+    const withRealtor = showRealtorInPrint.value;
+
     const rows = selectedArticlesList.value.map((item, i) => {
       const pyung = supplyAreaToPyung(item['공급면적']);
       const areaCell = [item['면적구분'] || '', pyung].filter(Boolean).join(' / ');
@@ -492,10 +495,15 @@ export function useEstate() {
       const bath = bathNum ? `${bathNum}개` : '-';
       const 특징 = item['특징'] || '-';
       const tradeColor = item['거래유형'] === '매매' ? 'color:#1d4ed8;background:#dbeafe' : item['거래유형'] === '전세' ? 'color:#7e22ce;background:#f3e8ff' : 'color:#047857;background:#d1fae5';
-      return `<tr><td style="text-align:center;color:#94a3b8;font-size:11px">${i + 1}</td><td><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-weight:800;font-size:11px;${tradeColor}">${item['거래유형']}</span></td><td style="font-weight:700">${item['동'] || '-'} <span style="color:#94a3b8;font-weight:400">${floor}</span></td><td>${areaCell}</td><td style="font-weight:900;font-size:14px">${item['가격'] || '-'}</td><td>${item['방향'] || '-'}</td><td>${bath}</td><td style="color:#475569;font-size:11px">${특징}</td></tr>`;
+      const realtorCell = withRealtor
+        ? `<td style="color:#475569;font-size:11px">${getUniqueRealtors(item['중개사목록']).map(r => cleanRealtorName(r.name)).filter(Boolean).join(', ') || '-'}</td>`
+        : '';
+      return `<tr><td style="text-align:center;color:#94a3b8;font-size:11px">${i + 1}</td><td><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-weight:800;font-size:11px;${tradeColor}">${item['거래유형']}</span></td><td style="font-weight:700">${item['동'] || '-'} <span style="color:#94a3b8;font-weight:400">${floor}</span></td><td>${areaCell}</td><td style="font-weight:900;font-size:14px">${item['가격'] || '-'}</td><td>${item['방향'] || '-'}</td><td>${bath}</td><td style="color:#475569;font-size:11px">${특징}</td>${realtorCell}</tr>`;
     }).join('');
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>매물 추천리스트</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:12px;color:#1e293b;background:#fff;padding:28px 32px}.doc-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #0f172a}.doc-header h1{font-size:18px;font-weight:900;color:#0f172a}.doc-header .meta{font-size:11px;color:#64748b;text-align:right;line-height:1.6}table{width:100%;border-collapse:collapse;font-size:12px}thead tr{background:#f1f5f9;border-top:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1}thead th{padding:7px 8px;font-weight:700;font-size:11px;color:#475569;text-align:left;white-space:nowrap}tbody tr{border-bottom:1px solid #e2e8f0}tbody tr:nth-child(even){background:#f8fafc}tbody td{padding:8px;vertical-align:middle;line-height:1.4}.doc-footer{margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8}.print-btn{position:fixed;top:20px;right:20px;padding:9px 18px;background:#4f46e5;color:white;border:none;border-radius:6px;font-weight:bold;font-size:13px;cursor:pointer}@media print{.print-btn{display:none}body{padding:16px 20px}thead tr{background:#f1f5f9!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}tbody tr:nth-child(even){background:#f8fafc!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 인쇄</button><div class="doc-header"><h1>매물 추천리스트</h1><div class="meta">총 ${selectedArticlesList.value.length}건<br>출력일: ${today}</div></div><table><thead><tr><th style="width:40px;text-align:center">No.</th><th style="width:60px">거래</th><th style="width:120px">동 / 층</th><th style="width:80px">면적</th><th style="width:250px">가격</th><th style="width:60px">방향</th><th style="width:50px">방수</th><th>특징</th></tr></thead><tbody>${rows}</tbody></table><div class="doc-footer">※ 가격 및 매물 현황은 변동될 수 있습니다.</div></body></html>`;
+    const realtorHead = withRealtor ? '<th style="width:160px">중개사</th>' : '';
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>매물 추천리스트</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:12px;color:#1e293b;background:#fff;padding:28px 32px}.doc-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #0f172a}.doc-header h1{font-size:18px;font-weight:900;color:#0f172a}.doc-header .meta{font-size:11px;color:#64748b;text-align:right;line-height:1.6}table{width:100%;border-collapse:collapse;font-size:12px}thead tr{background:#f1f5f9;border-top:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1}thead th{padding:7px 8px;font-weight:700;font-size:11px;color:#475569;text-align:left;white-space:nowrap}tbody tr{border-bottom:1px solid #e2e8f0}tbody tr:nth-child(even){background:#f8fafc}tbody td{padding:8px;vertical-align:middle;line-height:1.4}.doc-footer{margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8}.print-btn{position:fixed;top:20px;right:20px;padding:9px 18px;background:#4f46e5;color:white;border:none;border-radius:6px;font-weight:bold;font-size:13px;cursor:pointer}@media print{.print-btn{display:none}body{padding:16px 20px}thead tr{background:#f1f5f9!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}tbody tr:nth-child(even){background:#f8fafc!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><button class="print-btn" onclick="window.print()">🖨️ 인쇄</button><div class="doc-header"><h1>매물 추천리스트</h1><div class="meta">총 ${selectedArticlesList.value.length}건<br>출력일: ${today}</div></div><table><thead><tr><th style="width:40px;text-align:center">No.</th><th style="width:60px">거래</th><th style="width:120px">동 / 층</th><th style="width:80px">면적</th><th style="width:250px">가격</th><th style="width:60px">방향</th><th style="width:50px">방수</th><th>특징</th>${realtorHead}</tr></thead><tbody>${rows}</tbody></table><div class="doc-footer">※ 가격 및 매물 현황은 변동될 수 있습니다.</div></body></html>`;
 
     printWindow.document.write(html);
     printWindow.document.close();
@@ -568,7 +576,7 @@ export function useEstate() {
     activeTab, isSidebarOpen, complexName, rankResults, articleResults, isModalOpen, modalRealtors,
     proFilters, mainFilters, priceFilters, sortCol, sortAsc, COLS,
     MY_REALTOR, realtorOptions, dynamicCPs, cleanRealtorName, getUniqueRealtors,
-    selectedArticleIds, isPrintModalOpen,
+    selectedArticleIds, isPrintModalOpen, showRealtorInPrint,
     toggleArticleSelection, isSelectedArticle, toggleAllSelection, clearSelectedArticles,
     selectedArticlesList, isAllSelected, isIndeterminate, printSelection, copySelection, copyToast,
     doSearch, doScrape, selectOptions, summaryStats, rankStats,

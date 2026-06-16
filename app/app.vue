@@ -41,6 +41,7 @@ const {
   getUniqueRealtors,
   selectedArticleIds,
   isPrintModalOpen,
+  showRealtorInPrint,
   toggleArticleSelection,
   isSelectedArticle,
   toggleAllSelection,
@@ -591,6 +592,10 @@ const RANK_COLS = computed(() => {
             <p class="text-xs text-slate-400 mt-0.5 font-medium">총 {{ selectedArticleIds.length }}건 선택됨</p>
           </div>
           <div class="flex items-center gap-2 mr-4">
+            <label class="flex items-center gap-1.5 mr-1 cursor-pointer select-none">
+              <UiCheckbox v-model="showRealtorInPrint" class="w-4 h-4 border-slate-300 rounded text-indigo-600" />
+              <span class="text-sm font-bold text-slate-700">인쇄 시 중개사 노출</span>
+            </label>
             <UiButton
               variant="outline"
               size="sm"
@@ -668,7 +673,7 @@ const RANK_COLS = computed(() => {
                   {{ item['특징'] || '-' }}
                 </div>
               </td>
-              <!-- ✅ 중개사 목록 셀 (인쇄/복사에는 포함 안 됨, 화면 전용) -->
+              <!-- ✅ 중개사 목록 셀 (복사 제외 / 인쇄는 '중개사 노출' 체크 시 포함) -->
               <td class="px-4 py-3">
                 <div class="flex flex-wrap gap-1 max-w-[200px]">
                   <span
