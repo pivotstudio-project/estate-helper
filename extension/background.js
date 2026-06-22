@@ -1,13 +1,27 @@
 // background.js (중앙 통제실 - 하이브리드 엔진 V2)
 
-const waitForTabComplete = (tabId) => new Promise(resolve => {
+const waitForTabComplete = (tabId, timeoutMs = 60000) => new Promise((resolve, reject) => {
+  let done = false;
+  const finish = (fn, arg) => {
+    if (done) return;
+    done = true;
+    chrome.tabs.onUpdated.removeListener(listener);
+    clearTimeout(timer);
+    fn(arg);
+  };
   const listener = (id, info) => {
-    if (id === tabId && info.status === "complete") {
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve();
-    }
+    if (id === tabId && info.status === "complete") finish(resolve);
   };
   chrome.tabs.onUpdated.addListener(listener);
+
+  // 경합 방지: 리스너를 붙이기 전에 이미 로딩이 끝났을 수 있으므로 현재 상태를 즉시 확인
+  chrome.tabs.get(tabId, (tab) => {
+    if (chrome.runtime.lastError) return; // 탭이 사라졌으면 아래 타임아웃이 처리
+    if (tab && tab.status === "complete") finish(resolve);
+  });
+
+  // 무한 대기 방지: 로딩이 끝내 안 잡히면 거부
+  const timer = setTimeout(() => finish(reject, new Error("탭 로딩 시간 초과")), timeoutMs);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -42,16 +56,88 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // ── [B] 수집 모드 (하이브리드: 탭 오픈 -> 즉시 토큰 확보 -> API 전수조사) ──
+  // ── [B] 수집 모드: 큐에 등록만 하고 즉시 반환 (동시성 제한은 큐가 담당) ──
   if (message.action === "START_SCRAPING") {
-    const complexNo = message.complexNo;
-    console.log(`🎬 [통제실] 단지 번호 [${complexNo}] 전수조사 가동.`);
+    enqueueScrape(message.complexNo, sender.tab?.url || "", sender.tab?.id);
+    return;
+  }
+});
 
-    (async () => {
-      const originTabUrl = sender.tab?.url || "";
+// ── 수집 큐 (동시 실행 제한). Infinity = 무제한 (들어오는 즉시 모두 실행) ──
+const scrapeQueue = [];
+let activeScrapes = 0;
+const MAX_CONCURRENT = Infinity;
+
+function enqueueScrape(complexNo, originTabUrl, originTabId) {
+  scrapeQueue.push({ complexNo, originTabUrl, originTabId });
+  console.log(`🎟️ [통제실] 큐 등록 [${complexNo}] (대기 ${scrapeQueue.length}건, 진행 ${activeScrapes}건)`);
+  processScrapeQueue();
+}
+
+function processScrapeQueue() {
+  if (activeScrapes >= MAX_CONCURRENT) return;
+  const job = scrapeQueue.shift();
+  if (!job) return;
+  activeScrapes++;
+  startKeepAlive();
+  runScrape(job.complexNo, job.originTabUrl, job.originTabId).finally(() => {
+    activeScrapes--;
+    if (activeScrapes <= 0) stopKeepAlive();
+    processScrapeQueue();
+  });
+}
+
+// ── 서비스워커 keepalive ──
+// MV3 서비스워커는 ~30초 유휴 시 종료됨. 1600개 같은 대단지는 수집이 수 분 걸려
+// 그 사이 SW가 죽으면 수집이 통째로 증발(=무반응)함. 20초마다 chrome API를 찔러 종료 타이머를 리셋.
+let keepAliveTimer = null;
+function startKeepAlive() {
+  if (keepAliveTimer) return;
+  keepAliveTimer = setInterval(() => {
+    chrome.runtime.getPlatformInfo(() => {});
+  }, 20000);
+}
+function stopKeepAlive() {
+  if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
+}
+
+// 대시보드 탭으로 수집 완료/실패 신호를 직접 전송 (폴링 타임아웃 대신 이벤트 기반)
+function notifyDashboard(tabId, payload) {
+  if (tabId == null) return;
+  try {
+    chrome.tabs.sendMessage(tabId, payload).catch(() => {});
+  } catch (e) {}
+}
+
+// ── 단일 단지 수집 (하이브리드: 탭 오픈 -> 즉시 토큰 확보 -> API 전수조사) ──
+async function runScrape(complexNo, originTabUrl, originTabId) {
+  console.log(`🎬 [통제실] 단지 번호 [${complexNo}] 전수조사 가동.`);
+
+  let tab = null;
+  let settled = false;
+  let watchdog = null;
+
+  // 결과를 단 한 번만 통지(+탭 정리 +워치독 해제)하는 게이트.
+  // 정상완료 / 예외 / 워치독 중 먼저 도달한 것만 처리되어 중복 통지를 막음.
+  const settle = (payload) => {
+    if (settled) return;
+    settled = true;
+    if (watchdog) clearTimeout(watchdog);
+    notifyDashboard(originTabId, payload);
+    if (tab && tab.id != null) { try { chrome.tabs.remove(tab.id); } catch (_) {} }
+  };
+
+  // 워치독: 10분 안에 안 끝나면 멈춘 것으로 보고 강제 정리 (대단지는 안 건드리는 넉넉한 값)
+  watchdog = setTimeout(() => {
+    console.error(`⏱️ [통제실] 워치독 발동 [${complexNo}]: 10분 초과 → 강제 종료`);
+    settle({ type: "SCRAPE_DONE", complexNo, ok: false, error: "수집 시간 초과(10분) — 멈춘 작업을 정리했습니다." });
+  }, 10 * 60 * 1000);
+
+  try {
       const naverParams = "ms=2AIt9I,3z8DSq,17&a=APT:ABYG:JGC&e=RETAIL&ad=true";
 
-      const tab = await chrome.tabs.create({ url: `https://new.land.naver.com/complexes/${complexNo}?${naverParams}`, active: true });
+      // active:false → 포커스를 뺏지 않아 탭을 여러 개 동시에 띄워도 간섭/스로틀 최소화
+      tab = await chrome.tabs.create({ url: `https://new.land.naver.com/complexes/${complexNo}?${naverParams}`, active: false });
       await waitForTabComplete(tab.id);
 
       // 브라우저 렌더링 및 content-naver.js 작동 대기 (1.5초)
@@ -112,7 +198,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           let isMoreData = true;
           let pageNum = 1;
 
-          while (isMoreData && pageNum <= 30) {
+          while (isMoreData && pageNum <= 200) {
             try {
               const res = await originalFetch(`https://new.land.naver.com/api/articles/complex/${cNo}?type=APT:ABYG:JGC&ptype=APT:ABYG:JGC&tradeType=&rentPrice=&sameAddressGroup=true&minWarrantPrice=&maxWarrantPrice=&minDealPrice=&maxDealPrice=&minRentPrice=&maxRentPrice=&minArea=&maxArea=&delayMin=&delayMax=&floorGroup=&realtorId=&direction=&tag=&selectedComplexNo=${cNo}&priceType=RETAIL&markerId=&markerType=&complexName=&regionCode=&mapX=&mapY=&mapLevel=&page=${pageNum}&articleState=`, {
                 headers: { "authorization": capturedToken, "referer": window.location.href },
@@ -130,7 +216,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
               isMoreData = data.isMoreData;
               pageNum++;
-              const randomPageDelay = Math.floor(Math.random() * 700) + 500;
+              const randomPageDelay = Math.floor(Math.random() * 300) + 200;
               await new Promise(r => setTimeout(r, randomPageDelay));
             } catch (e) {
               break;
@@ -146,7 +232,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           // 3. 상세 데이터 5개씩 묶어서(Batch) Fetch 호출
           const allGroups = {};
-          const BATCH_SIZE = 5;
+          const BATCH_SIZE = 10;
           const baseUrl = "https://new.land.naver.com/api/articles?index=0&representativeArticleNo=";
 
           for (let i = 0; i < articleNos.length; i += BATCH_SIZE) {
@@ -162,7 +248,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               } catch (e) {}
             }));
-            const randomBatchDelay = Math.floor(Math.random() * 500) + 300;
+            const randomBatchDelay = Math.floor(Math.random() * 250) + 150;
             await new Promise(r => setTimeout(r, randomBatchDelay));
           }
 
@@ -199,15 +285,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             })
           });
           console.log("✅ [통제실] 서버 전송 성공.");
+          settle({ type: "SCRAPE_DONE", complexNo, ok: true });
         } catch(e) {
           console.error("❌ [통제실] 서버 전송 중 에러 발생:", e);
+          settle({ type: "SCRAPE_DONE", complexNo, ok: false, error: "서버 전송 실패: " + e.message });
         }
       } else {
         console.error("❌ [통제실] 수집 과정 중 에러 발생:", finalResult?.error);
+        settle({ type: "SCRAPE_DONE", complexNo, ok: false, error: finalResult?.error || "수집에 실패했습니다." });
       }
-
-      // 작업이 끝났으면 네이버 탭 닫기
-      chrome.tabs.remove(tab.id);
-    })();
+  } catch (e) {
+    // executeScript 실패, 서비스워커 재시작, 결과 직렬화 실패, 탭 로딩 시간 초과 등
+    console.error("❌ [통제실] 수집 도중 예외 발생:", e);
+    settle({ type: "SCRAPE_DONE", complexNo, ok: false, error: "수집 중 예외: " + (e?.message || String(e)) });
+  } finally {
+    // settle이 통지/탭정리/워치독 해제를 모두 담당. 혹시 한 번도 안 불렸으면 정리.
+    if (!settled) settle({ type: "SCRAPE_DONE", complexNo, ok: false, error: "수집이 비정상 종료되었습니다." });
   }
-});
+}

@@ -124,8 +124,7 @@ export default defineEventHandler(async (event) => {
             is_site,
             date: c_date,
             articleNo: item.articleNo || '',
-            cpUrl: externalCpUrl,
-            _debug: item
+            cpUrl: externalCpUrl
           });
         }
       }
@@ -153,12 +152,27 @@ export default defineEventHandler(async (event) => {
     }
 
     const storage = getEstateStorage();
-    await storage.setItem(complexNo, {
-      status: "DONE",
-      complex_name: complex_name,
-      rank_results: [], // 기존 사용 안 함
-      article_results: article_results
-    });
+    try {
+      await storage.setItem(complexNo, {
+        status: "DONE",
+        complex_name: complex_name,
+        rank_results: [], // 기존 사용 안 함
+        article_results: article_results
+      });
+    } catch (writeErr: any) {
+      // KV 용량 초과 등 저장 실패 → 작은 ERROR 페이로드로 기록해 프론트가 즉시 인지하게 함
+      console.error('❌ KV 저장 실패:', writeErr);
+      try {
+        await storage.setItem(complexNo, {
+          status: "ERROR",
+          complex_name: complex_name,
+          error: "저장 용량 초과 또는 KV 오류로 저장에 실패했습니다.",
+          rank_results: [],
+          article_results: []
+        });
+      } catch (_) { /* ERROR 기록마저 실패하면 프론트 타임아웃이 받아줌 */ }
+      return { ok: false, error: writeErr.message };
+    }
 
     return { ok: true };
 

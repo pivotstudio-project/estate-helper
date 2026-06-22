@@ -163,17 +163,23 @@ export function useEstate() {
     await $fetch('/api/set-loading', { params: { complexNo } });
     window.postMessage({ type: "START_SCRAPING", complexNo: complexNo }, "*");
 
+    // 완료는 확장의 SCRAPE_DONE 신호로 감지(=시간 제한 없음).
+    // 폴링은 신호가 유실될 때를 대비한 백업으로만 유지(상태가 DONE/ERROR면 알아서 멈춤).
     if (pollInterval) clearInterval(pollInterval);
-    pollInterval = setInterval(() => checkServerStatus(complexNo), 1500);
+    pollInterval = setInterval(() => checkServerStatus(complexNo), 2000);
+  };
 
-    if (extensionTimeout) clearTimeout(extensionTimeout);
-    extensionTimeout = setTimeout(() => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-        statusBannerMessage.value = "❌ 수집 시간 초과: 데이터가 너무 많거나 문제가 발생했습니다.";
-        setTimeout(() => { showStatusBanner.value = false; }, 4000);
-      }
-    }, 60000);
+  // 확장이 수집을 끝내면(성공/실패) 직접 신호를 보냄 → 그때 서버 데이터를 한 번만 가져옴
+  const handleScrapeDone = async (msg: any) => {
+    const complexNo = String(msg.complexNo || 'default');
+    if (msg.ok) {
+      await checkServerStatus(complexNo); // 상태가 DONE이면 데이터 로드 + 폴링 정리
+    } else {
+      if (pollInterval) clearInterval(pollInterval);
+      showStatusBanner.value = true;
+      statusBannerMessage.value = "❌ 수집 실패: " + (msg.error || "알 수 없는 오류가 발생했습니다.");
+      setTimeout(() => { showStatusBanner.value = false; }, 4000);
+    }
   };
 
   const checkServerStatus = async (complexNo: string) => {
@@ -184,10 +190,17 @@ export function useEstate() {
       showStatusBanner.value = false;
       complexName.value = data.complex_name;
       articleResults.value = data.article_results;
+    } else if (data && data.status === "ERROR") {
+      // 서버 저장 실패 등 확정 실패 → 타임아웃까지 기다리지 않고 즉시 표시
+      clearInterval(pollInterval);
+      if (extensionTimeout) clearTimeout(extensionTimeout);
+      statusBannerMessage.value = "❌ 저장 실패: " + (data.error || "데이터 저장 중 문제가 발생했습니다.");
+      setTimeout(() => { showStatusBanner.value = false; }, 4000);
     }
   };
 
   const handleExtensionMessage = (event: MessageEvent) => {
+    if (event.data?.type === "SCRAPE_DONE") { handleScrapeDone(event.data); return; }
     if (event.data?.type !== "SEARCH_RESULT") return;
     if (extensionTimeout) clearTimeout(extensionTimeout);
     const data = event.data.data;
