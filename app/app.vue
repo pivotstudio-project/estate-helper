@@ -47,6 +47,10 @@ const {
   toggleAllSelection,
   clearSelectedArticles,
   selectedArticlesList,
+  sortedSelectedArticlesList,
+  recommendSortCol,
+  recommendSortAsc,
+  toggleRecommendSort,
   isAllSelected,
   isIndeterminate,
   printSelection,
@@ -629,8 +633,18 @@ const RANK_COLS = computed(() => {
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-10 text-center">No.</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-20">거래</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-36">동 / 층</th>
-              <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-32">면적</th>
-              <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-56">가격</th>
+              <th
+                class="px-4 py-2.5 text-xs font-bold text-slate-500 w-32 cursor-pointer select-none hover:text-slate-700"
+                @click="toggleRecommendSort('면적')"
+              >
+                면적<span v-if="recommendSortCol === '면적'" class="ml-0.5 text-indigo-600">{{ recommendSortAsc ? '▲' : '▼' }}</span>
+              </th>
+              <th
+                class="px-4 py-2.5 text-xs font-bold text-slate-500 w-56 cursor-pointer select-none hover:text-slate-700"
+                @click="toggleRecommendSort('가격')"
+              >
+                가격<span v-if="recommendSortCol === '가격'" class="ml-0.5 text-indigo-600">{{ recommendSortAsc ? '▲' : '▼' }}</span>
+              </th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-20">방향</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500 w-16">방수</th>
               <th class="px-4 py-2.5 text-xs font-bold text-slate-500">특징</th>
@@ -640,7 +654,7 @@ const RANK_COLS = computed(() => {
             </thead>
             <tbody>
             <tr
-              v-for="(item, i) in selectedArticlesList"
+              v-for="(item, i) in sortedSelectedArticlesList"
               :key="i"
               class="border-b border-slate-100 hover:bg-slate-50/80 transition-colors"
             >
