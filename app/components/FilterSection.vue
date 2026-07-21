@@ -277,7 +277,7 @@ const multiLabel = (field: 'trade' | 'building' | 'area' | 'areaType', placehold
 
         <!-- 금액 및 세안고 제외 (기존 유지) -->
         <div class="space-y-3">
-          <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">금액 및 세안고 제외</div>
+          <div class="text-sm font-bold text-slate-400 uppercase tracking-widest">금액 및 세안고</div>
           <div class="space-y-3">
             <div class="flex flex-col gap-1.5">
               <UiLabel class="text-sm font-bold text-slate-700">매물 가격 (만원)</UiLabel>
@@ -295,9 +295,15 @@ const multiLabel = (field: 'trade' | 'building' | 'area' | 'areaType', placehold
                 <UiInput v-model.number="priceFilters.rentMax" type="number" placeholder="최대" class="h-10 bg-slate-50 rounded-md text-sm border-slate-200 flex-1" />
               </div>
             </div>
-            <div class="flex items-center gap-2 pt-1">
-              <UiCheckbox id="exc-seango" v-model="priceFilters.excludeSeango" class="w-4 h-4 border-slate-300 rounded text-blue-600" />
-              <UiLabel for="exc-seango" class="text-sm font-bold text-slate-700 cursor-pointer select-none">세안고 제외</UiLabel>
+            <div class="flex items-center gap-4 pt-1">
+              <div class="flex items-center gap-2">
+                <UiCheckbox id="exc-seango" v-model="priceFilters.excludeSeango" class="w-4 h-4 border-slate-300 rounded text-blue-600" />
+                <UiLabel for="exc-seango" class="text-sm font-bold text-slate-700 cursor-pointer select-none">세안고 제외</UiLabel>
+              </div>
+              <div class="flex items-center gap-2">
+                <UiCheckbox id="only-seango" v-model="priceFilters.onlySeango" class="w-4 h-4 border-slate-300 rounded text-blue-600" />
+                <UiLabel for="only-seango" class="text-sm font-bold text-slate-700 cursor-pointer select-none">세안고만</UiLabel>
+              </div>
             </div>
           </div>
         </div>

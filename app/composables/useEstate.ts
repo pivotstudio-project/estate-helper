@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 
 export function useEstate() {
   const query = ref('');
@@ -52,8 +52,13 @@ export function useEstate() {
     priceMax: null as number | null,
     rentMin: null as number | null,
     rentMax: null as number | null,
-    excludeSeango: false
+    excludeSeango: false,
+    onlySeango: false
   });
+
+  // 세안고 "제외"와 "만 보기"는 동시에 켜면 결과가 0건이 되므로 상호 배타 처리
+  watch(() => priceFilters.value.excludeSeango, (v) => { if (v) priceFilters.value.onlySeango = false; });
+  watch(() => priceFilters.value.onlySeango, (v) => { if (v) priceFilters.value.excludeSeango = false; });
 
   const sortCol = ref('');
   const sortAsc = ref(false);
@@ -306,12 +311,14 @@ export function useEstate() {
     if (priceFilters.value.priceMax !== null) rows = rows.filter(r => (r._rawPriceMin ?? r._rawPrice) <= priceFilters.value.priceMax!);
     if (priceFilters.value.rentMin !== null) rows = rows.filter(r => (r._rawRentMax ?? r._rawRent) >= priceFilters.value.rentMin!);
     if (priceFilters.value.rentMax !== null) rows = rows.filter(r => (r._rawRentMin ?? r._rawRent) <= priceFilters.value.rentMax!);
-    if (priceFilters.value.excludeSeango) {
+    if (priceFilters.value.excludeSeango || priceFilters.value.onlySeango) {
       const seangoRegex = /세\s*안고|세\s*끼고|전세\s*안고/i;
-      rows = rows.filter(r => {
-        const text = (r['특징'] || '') + (r['특징태그'] || '') + (r['태그원문'] || '');
-        return !seangoRegex.test(text);
-      });
+      const isSeango = (r: any) => seangoRegex.test(
+        (r['특징'] || '') + (r['특징태그'] || '') + (r['태그원문'] || '')
+      );
+      rows = priceFilters.value.onlySeango
+        ? rows.filter(isSeango)
+        : rows.filter(r => !isSeango(r));
     }
 
     if (proFilters.value.priceDrop) rows = rows.filter(r => r['가격변동여부'] === true || (r['특징태그'] || '').includes('급매'));
@@ -599,6 +606,7 @@ export function useEstate() {
     priceFilters.value.priceMin = null; priceFilters.value.priceMax = null;
     priceFilters.value.rentMin = null; priceFilters.value.rentMax = null;
     priceFilters.value.excludeSeango = false;
+    priceFilters.value.onlySeango = false;
     activeQuickFilter.value = null;
   };
 
