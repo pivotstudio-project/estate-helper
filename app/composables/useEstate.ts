@@ -20,7 +20,9 @@ export function useEstate() {
   const isModalOpen = ref(false);
   const modalRealtors = ref<any[]>([]);
 
-  const selectedArticleIds = ref<number[]>([]);
+  // 선택 매물: 단지가 바뀌어도 누적 유지되도록 "행 데이터 자체"를 보관 (고유키 = 단지번호:순번)
+  const selectedArticles = ref<any[]>([]);
+  const keyOf = (row: any) => `${row?.단지번호 ?? ''}:${row?.순번 ?? ''}`;
   const isPrintModalOpen = ref(false);
   const showRealtorInPrint = ref(false);
 
@@ -195,9 +197,7 @@ export function useEstate() {
       showStatusBanner.value = false;
       complexName.value = data.complex_name;
       articleResults.value = data.article_results;
-      // 새 단지 데이터가 들어오면 이전 단지의 선택(순번 기준)이 그대로 남아 다른 매물이
-      // 선택된 것처럼 보이는 문제 방지 → 선택 초기화
-      selectedArticleIds.value = [];
+      // 선택은 단지가 바뀌어도 누적 유지 (단지번호:순번 고유키라 서로 안 섞임) → 초기화하지 않음
     } else if (data && data.status === "ERROR") {
       // 서버 저장 실패 등 확정 실패 → 타임아웃까지 기다리지 않고 즉시 표시
       clearInterval(pollInterval);
@@ -436,38 +436,43 @@ export function useEstate() {
     return rows;
   });
 
-  const toggleArticleSelection = (id: number) => {
-    const numId = Number(id);
-    if (selectedArticleIds.value.includes(numId)) {
-      selectedArticleIds.value = selectedArticleIds.value.filter(i => i !== numId);
+  // 선택 시 현재 단지명을 각인 (row.단지명이 비어있는 경우 대비 → 그룹 라벨로 사용)
+  const currentComplexLabel = () => {
+    const n = complexName.value;
+    if (n && n !== '단지명' && n !== '조회된 단지 없음' && n !== '수집 중...') return n;
+    return '';
+  };
+  // 실제 단지명은 대개 '원문'(articleName)에 들어있음 (complex_name/단지명 필드는 비어있는 경우가 많음)
+  const stampComplex = (row: any) => ({ ...row, __complexName: row.원문 || currentComplexLabel() || row.단지명 || row.단지번호 || '' });
+
+  const toggleArticleSelection = (row: any) => {
+    const k = keyOf(row);
+    if (selectedArticles.value.some(a => keyOf(a) === k)) {
+      selectedArticles.value = selectedArticles.value.filter(a => keyOf(a) !== k);
     } else {
-      selectedArticleIds.value = [...selectedArticleIds.value, numId];
+      selectedArticles.value = [...selectedArticles.value, stampComplex(row)];
     }
   };
 
-  const isSelectedArticle = (id: number) => selectedArticleIds.value.includes(Number(id));
-  const clearSelectedArticles = () => { selectedArticleIds.value = []; };
+  const isSelectedArticle = (row: any) => {
+    const k = keyOf(row);
+    return selectedArticles.value.some(a => keyOf(a) === k);
+  };
+  const clearSelectedArticles = () => { selectedArticles.value = []; };
 
   const toggleAllSelection = (checked: boolean) => {
     if (checked) {
-      const newIds = new Set(selectedArticleIds.value);
-      filteredArticles.value.forEach(a => newIds.add(Number(a.순번)));
-      selectedArticleIds.value = Array.from(newIds);
+      const existing = new Set(selectedArticles.value.map(keyOf));
+      const additions = filteredArticles.value.filter(a => !existing.has(keyOf(a))).map(stampComplex);
+      selectedArticles.value = [...selectedArticles.value, ...additions];
     } else {
-      const currentFilteredIds = filteredArticles.value.map(a => Number(a.순번));
-      selectedArticleIds.value = selectedArticleIds.value.filter(id => !currentFilteredIds.includes(id));
+      const currentKeys = new Set(filteredArticles.value.map(keyOf));
+      selectedArticles.value = selectedArticles.value.filter(a => !currentKeys.has(keyOf(a)));
     }
   };
 
-  const selectedArticlesList = computed(() => {
-    // 메인 매물표(filteredArticles)의 현재 정렬 순서를 그대로 유지 → 가격순으로 정렬해서 체크하면
-    // 추천리스트에도 그 순서 그대로 들어옴
-    const inOrder = filteredArticles.value.filter(a => selectedArticleIds.value.includes(Number(a.순번)));
-    // 필터로 가려진 선택 항목은 누락되지 않게 뒤에 보존
-    const seen = new Set(inOrder.map((a: any) => Number(a.순번)));
-    const hidden = articleResults.value.filter(a => selectedArticleIds.value.includes(Number(a.순번)) && !seen.has(Number(a.순번)));
-    return [...inOrder, ...hidden];
-  });
+  // 선택 매물 목록 = 누적 보관된 행 그대로 (체크한 순서 유지, 단지 넘나들며 누적)
+  const selectedArticlesList = computed(() => selectedArticles.value);
 
   // 추천리스트 모달 정렬 (면적 / 가격)
   const recommendSortCol = ref<'' | '면적' | '가격'>('');
@@ -487,20 +492,37 @@ export function useEstate() {
     });
   });
 
+  // 추천리스트를 단지별로 묶어 표시 (단지 넘나든 선택을 헷갈리지 않게 구분)
+  const groupedSelectedArticles = computed(() => {
+    const groups: { key: string; name: string; items: any[]; startIndex: number }[] = [];
+    const map = new Map<string, any>();
+    for (const a of sortedSelectedArticlesList.value) {
+      const key = String(a.단지번호 ?? a.__complexName ?? '');
+      let g = map.get(key);
+      if (!g) { g = { key, name: a.__complexName || a.원문 || a.단지명 || a.단지번호 || '단지', items: [], startIndex: 0 }; map.set(key, g); groups.push(g); }
+      g.items.push(a);
+    }
+    let acc = 0;
+    for (const g of groups) { g.startIndex = acc; acc += g.items.length; }
+    return groups;
+  });
+
   const isAllSelected = computed(() => {
+    const keys = new Set(selectedArticles.value.map(keyOf));
     return filteredArticles.value.length > 0
-      && filteredArticles.value.every(a => selectedArticleIds.value.includes(Number(a.순번)));
+      && filteredArticles.value.every(a => keys.has(keyOf(a)));
   });
 
   const isIndeterminate = computed(() => {
-    const selectedInFiltered = filteredArticles.value.filter(a => selectedArticleIds.value.includes(Number(a.순번)));
-    return selectedInFiltered.length > 0 && selectedInFiltered.length < filteredArticles.value.length;
+    const keys = new Set(selectedArticles.value.map(keyOf));
+    const inSel = filteredArticles.value.filter(a => keys.has(keyOf(a))).length;
+    return inSel > 0 && inSel < filteredArticles.value.length;
   });
 
   const copyToast = ref(false);
 
   const copySelection = async () => {
-    const lines = sortedSelectedArticlesList.value.map((item) => {
+    const itemLine = (item: any) => {
       const pyung = supplyAreaToPyung(item['공급면적']);
       const dong = item['동'] || '';
       const floor = item['층'] ? `${item['층']}층` : '';
@@ -512,9 +534,16 @@ export function useEstate() {
       const mainParts = [location, areaType, pyung, direction, price].filter(Boolean).join(', ');
       const 특징 = item['특징'] ? item['특징'].trim() : '';
       return 특징 ? `${mainParts}\n${특징}` : mainParts;
+    };
+    // 단지별로 묶어서 복사 (여러 단지면 단지명 헤더 표시)
+    const groups = groupedSelectedArticles.value;
+    const multi = groups.length > 1;
+    const blocks = groups.map(g => {
+      const body = g.items.map(itemLine).join('\n\n');
+      return multi ? `[${g.name}]\n${body}` : body;
     });
 
-    const text = ['매물 추천리스트', '', lines.join('\n\n'), '', '※ 가격 및 매물 현황은 변동될 수 있습니다.'].join('\n');
+    const text = ['매물 추천리스트', '', blocks.join('\n\n'), '', '※ 가격 및 매물 현황은 변동될 수 있습니다.'].join('\n');
 
     try {
       await navigator.clipboard.writeText(text);
@@ -533,7 +562,7 @@ export function useEstate() {
 
     const withRealtor = showRealtorInPrint.value;
 
-    const rows = sortedSelectedArticlesList.value.map((item, i) => {
+    const itemRow = (item: any, no: number) => {
       const pyung = supplyAreaToPyung(item['공급면적']);
       const areaCell = [item['면적구분'] || '', pyung].filter(Boolean).join(' / ');
       const floor = `${item['층'] || '-'}${item['총층수'] ? `/${item['총층수']}층` : ''}`;
@@ -545,7 +574,18 @@ export function useEstate() {
       const realtorCell = withRealtor
         ? `<td style="color:#475569;font-size:11px">${getUniqueRealtors(item['중개사목록']).map(r => cleanRealtorName(r.name)).filter(Boolean).join(', ') || '-'}</td>`
         : '';
-      return `<tr><td style="text-align:center;color:#94a3b8;font-size:11px">${i + 1}</td><td><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-weight:800;font-size:11px;${tradeColor}">${item['거래유형']}</span></td><td style="font-weight:700">${item['동'] || '-'} <span style="color:#94a3b8;font-weight:400">${floor}</span></td><td>${areaCell}</td><td style="font-weight:900;font-size:14px">${item['가격'] || '-'}</td><td>${item['방향'] || '-'}</td><td>${bath}</td><td style="color:#475569;font-size:11px">${특징}</td>${realtorCell}</tr>`;
+      return `<tr><td style="text-align:center;color:#94a3b8;font-size:11px">${no}</td><td><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-weight:800;font-size:11px;${tradeColor}">${item['거래유형']}</span></td><td style="font-weight:700">${item['동'] || '-'} <span style="color:#94a3b8;font-weight:400">${floor}</span></td><td>${areaCell}</td><td style="font-weight:900;font-size:14px">${item['가격'] || '-'}</td><td>${item['방향'] || '-'}</td><td>${bath}</td><td style="color:#475569;font-size:11px">${특징}</td>${realtorCell}</tr>`;
+    };
+    // 단지별 그룹: 여러 단지면 단지명 헤더 행 삽입
+    const groups = groupedSelectedArticles.value;
+    const multi = groups.length > 1;
+    const colCount = withRealtor ? 9 : 8;
+    const rows = groups.map(g => {
+      const header = multi
+        ? `<tr><td colspan="${colCount}" style="background:#eef2ff;color:#3730a3;font-weight:800;font-size:12px;padding:7px 8px">${g.name} <span style="color:#6366f1;font-weight:600">(${g.items.length}건)</span></td></tr>`
+        : '';
+      const body = g.items.map((item, i) => itemRow(item, g.startIndex + i + 1)).join('');
+      return header + body;
     }).join('');
 
     const realtorHead = withRealtor ? '<th style="width:160px">중개사</th>' : '';
@@ -624,9 +664,9 @@ export function useEstate() {
     activeTab, isSidebarOpen, complexName, rankResults, articleResults, isModalOpen, modalRealtors,
     proFilters, mainFilters, priceFilters, sortCol, sortAsc, COLS,
     MY_REALTOR, realtorOptions, dynamicCPs, cleanRealtorName, getUniqueRealtors,
-    selectedArticleIds, isPrintModalOpen, showRealtorInPrint,
+    selectedArticles, isPrintModalOpen, showRealtorInPrint,
     toggleArticleSelection, isSelectedArticle, toggleAllSelection, clearSelectedArticles,
-    selectedArticlesList, sortedSelectedArticlesList, recommendSortCol, recommendSortAsc, toggleRecommendSort,
+    selectedArticlesList, sortedSelectedArticlesList, groupedSelectedArticles, recommendSortCol, recommendSortAsc, toggleRecommendSort,
     isAllSelected, isIndeterminate, printSelection, copySelection, copyToast,
     doSearch, doScrape, selectOptions, summaryStats, rankStats,
     sortedRankResults, filteredArticles, formatArea, formatDate, toggleSort, resetSort, resetFilters,
